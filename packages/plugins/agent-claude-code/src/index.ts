@@ -245,7 +245,7 @@ async function findClaudeProcess(handle: RuntimeHandle): Promise<number | null> 
         handle.id,
         "-F",
         "#{pane_tty}",
-      ]);
+      ], { timeout: 30_000 });
       // Iterate all pane TTYs (multi-pane sessions) — succeed on any match
       const ttys = ttyOut
         .trim()
@@ -257,7 +257,7 @@ async function findClaudeProcess(handle: RuntimeHandle): Promise<number | null> 
       // Use `args` instead of `comm` so we can match the CLI name even when
       // the process runs via a wrapper (e.g. node, python).  `comm` would
       // report "node" instead of "claude" in those cases.
-      const { stdout: psOut } = await execFileAsync("ps", ["-eo", "pid,tty,args"]);
+      const { stdout: psOut } = await execFileAsync("ps", ["-eo", "pid,tty,args"], { timeout: 30_000 });
       const ttySet = new Set(ttys.map((t) => t.replace(/^\/dev\//, "")));
       // Match "claude" as a word boundary — prevents false positives on
       // names like "claude-code" or paths that merely contain the substring.
@@ -362,7 +362,7 @@ function createClaudeCodeAgent(): Agent {
             "-p",
             "-S",
             "-15",
-          ]);
+          ], { timeout: 30_000 });
           output = stdout;
         }
       } catch {
@@ -445,5 +445,4 @@ export function create(): Agent {
   return createClaudeCodeAgent();
 }
 
-const plugin: PluginModule<Agent> = { manifest, create };
-export default plugin;
+export default { manifest, create } satisfies PluginModule<Agent>;

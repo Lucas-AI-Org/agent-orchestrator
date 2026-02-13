@@ -80,7 +80,7 @@ function createAiderAgent(): Agent {
             handle.id,
             "-F",
             "#{pane_tty}",
-          ]);
+          ], { timeout: 30_000 });
           const ttys = ttyOut
             .trim()
             .split("\n")
@@ -88,7 +88,7 @@ function createAiderAgent(): Agent {
             .filter(Boolean);
           if (ttys.length === 0) return false;
 
-          const { stdout: psOut } = await execFileAsync("ps", ["-eo", "pid,tty,args"]);
+          const { stdout: psOut } = await execFileAsync("ps", ["-eo", "pid,tty,args"], { timeout: 30_000 });
           const ttySet = new Set(ttys.map((t) => t.replace(/^\/dev\//, "")));
           const processRe = /(?:^|\/)aider(?:\s|$)/;
           for (const line of psOut.split("\n")) {
@@ -137,5 +137,4 @@ export function create(): Agent {
   return createAiderAgent();
 }
 
-const plugin: PluginModule<Agent> = { manifest, create };
-export default plugin;
+export default { manifest, create } satisfies PluginModule<Agent>;
