@@ -23,11 +23,17 @@ const execFileAsync = promisify(execFile);
 // ---------------------------------------------------------------------------
 
 async function gh(args: string[]): Promise<string> {
-  const { stdout } = await execFileAsync("gh", args, {
-    maxBuffer: 10 * 1024 * 1024,
-    timeout: 30_000,
-  });
-  return stdout.trim();
+  try {
+    const { stdout } = await execFileAsync("gh", args, {
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: 30_000,
+    });
+    return stdout.trim();
+  } catch (err) {
+    throw new Error(`gh ${args.slice(0, 3).join(" ")} failed: ${(err as Error).message}`, {
+      cause: err,
+    });
+  }
 }
 
 function mapState(

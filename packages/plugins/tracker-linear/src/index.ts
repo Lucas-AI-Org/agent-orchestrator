@@ -334,7 +334,8 @@ function createLinearTracker(): Tracker {
       update: IssueUpdate,
       _project: ProjectConfig,
     ): Promise<void> {
-      // First resolve the issue UUID from the identifier
+      // Linear's issue() query accepts both UUID and short identifier (e.g. "INT-1330").
+      // We resolve to UUID here for use in mutations.
       const issueData = await linearQuery<{
         issue: { id: string; team: { id: string } };
       }>(

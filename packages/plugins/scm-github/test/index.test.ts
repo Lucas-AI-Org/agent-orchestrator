@@ -63,10 +63,6 @@ function mockGh(result: unknown) {
   ghMock.mockResolvedValueOnce({ stdout: JSON.stringify(result) });
 }
 
-function mockGhRaw(stdout: string) {
-  ghMock.mockResolvedValueOnce({ stdout });
-}
-
 function mockGhError(msg = "Command failed") {
   ghMock.mockRejectedValueOnce(new Error(msg));
 }
