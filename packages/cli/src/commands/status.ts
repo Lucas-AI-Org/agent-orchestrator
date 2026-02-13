@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync, statSync, openSync, readSync, closeSync } from "node:fs";
 import { join } from "node:path";
 import chalk from "chalk";
 import type { Command } from "commander";
@@ -38,12 +38,13 @@ async function getClaudeSessionInfo(
     const tty = ttyOutput.stdout.trim();
     if (!tty) return { summary: null, sessionId: null };
 
-    // Find Claude PID running on that TTY
-    const psOutput = await exec("bash", [
-      "-c",
-      `ps -eo pid,tty,comm | grep claude | grep "${tty.replace("/dev/", "")}" | head -1 | awk '{print $1}'`,
-    ]);
-    const pid = psOutput.stdout.trim();
+    // Find Claude PID running on that TTY (safe: no shell interpolation)
+    const psOutput = await exec("ps", ["-eo", "pid,tty,comm"]);
+    const ttyShort = tty.replace("/dev/", "");
+    const pidLine = psOutput.stdout
+      .split("\n")
+      .find((line) => line.includes("claude") && line.includes(ttyShort));
+    const pid = pidLine?.trim().split(/\s+/)[0];
     if (!pid) return { summary: null, sessionId: null };
 
     // Get Claude's working directory
@@ -69,9 +70,23 @@ async function getClaudeSessionInfo(
     const sessionFile = join(claudeProjectDir, files[0]);
     const sessionId = files[0].replace(".jsonl", "").slice(0, 8);
 
-    // Read last few lines to find auto-generated summary
-    const content = readFileSync(sessionFile, "utf-8");
-    const lines = content.trim().split("\n").slice(-20);
+    // Read only the tail of the file (last ~8KB) to avoid loading large JSONL files
+    const fileSize = statSync(sessionFile).size;
+    const tailSize = Math.min(fileSize, 8192);
+    let tail: string;
+    if (tailSize === fileSize) {
+      tail = readFileSync(sessionFile, "utf-8");
+    } else {
+      const buf = Buffer.alloc(tailSize);
+      const fd = openSync(sessionFile, "r");
+      try {
+        readSync(fd, buf, 0, tailSize, fileSize - tailSize);
+      } finally {
+        closeSync(fd);
+      }
+      tail = buf.toString("utf-8");
+    }
+    const lines = tail.trim().split("\n").slice(-20);
     let summary: string | null = null;
 
     for (const line of lines.reverse()) {

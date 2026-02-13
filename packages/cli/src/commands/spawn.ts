@@ -43,8 +43,15 @@ async function spawnSession(
   // Fetch latest from remote
   await git(["fetch", "origin", "--quiet"], project.path);
 
-  // Create worktree
-  const branch = issueId ? `feat/${issueId}` : undefined;
+  // Create worktree — sanitize issueId for git ref safety
+  const safeBranchSuffix = issueId
+    ? issueId
+        .replace(/^#/, "") // strip leading #
+        .replace(/[^\w./-]/g, "-") // replace non-ref-safe chars
+        .replace(/\.{2,}/g, ".") // no consecutive dots
+        .replace(/^[.-]|[.-]$/g, "") // no leading/trailing dots or dashes
+    : undefined;
+  const branch = safeBranchSuffix ? `feat/${safeBranchSuffix}` : undefined;
   const defaultRef = `origin/${project.defaultBranch}`;
 
   if (branch) {
@@ -225,14 +232,20 @@ export function registerBatchSpawn(program: Command): void {
       console.log(`  Issues:  ${issues.join(", ")}`);
       console.log();
 
-      const allTmux = await getTmuxSessions();
+      let allTmux = await getTmuxSessions();
       const sessionDir = getSessionDir(config.dataDir, projectId);
       const created: Array<{ session: string; issue: string }> = [];
       const skipped: Array<{ issue: string; existing: string }> = [];
       const failed: string[] = [];
+      const spawnedIssues = new Set<string>();
 
       for (const issue of issues) {
-        // Duplicate detection
+        // Duplicate detection — check both existing sessions and same-run duplicates
+        if (spawnedIssues.has(issue.toLowerCase())) {
+          console.log(chalk.yellow(`  Skip ${issue} — duplicate in this batch`));
+          skipped.push({ issue, existing: "(this batch)" });
+          continue;
+        }
         const existing = await findSessionForIssue(sessionDir, issue, allTmux);
         if (existing) {
           console.log(chalk.yellow(`  Skip ${issue} — already has session: ${existing}`));
@@ -243,6 +256,9 @@ export function registerBatchSpawn(program: Command): void {
         try {
           const sessionName = await spawnSession(config, projectId, project, issue, opts.open);
           created.push({ session: sessionName, issue });
+          spawnedIssues.add(issue.toLowerCase());
+          // Refresh tmux session list so next iteration sees the new session
+          allTmux = await getTmuxSessions();
         } catch (err) {
           console.error(chalk.red(`  Failed to spawn for ${issue}: ${err}`));
           failed.push(issue);

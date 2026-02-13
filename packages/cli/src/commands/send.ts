@@ -67,7 +67,8 @@ export function registerSend(program: Command): void {
           process.exit(1);
         }
 
-        const timeoutMs = parseInt(opts.timeout || "600", 10) * 1000;
+        const parsedTimeout = parseInt(opts.timeout || "600", 10);
+        const timeoutMs = (isNaN(parsedTimeout) || parsedTimeout <= 0 ? 600 : parsedTimeout) * 1000;
 
         // Wait for idle
         if (opts.wait !== false) {
@@ -95,9 +96,16 @@ export function registerSend(program: Command): void {
           const content = readFileSync(opts.file, "utf-8");
           const tmpFile = join(tmpdir(), `ao-send-${Date.now()}.txt`);
           writeFileSync(tmpFile, content);
-          await exec("tmux", ["load-buffer", tmpFile]);
-          await exec("tmux", ["paste-buffer", "-t", session]);
-          unlinkSync(tmpFile);
+          try {
+            await exec("tmux", ["load-buffer", tmpFile]);
+            await exec("tmux", ["paste-buffer", "-t", session]);
+          } finally {
+            try {
+              unlinkSync(tmpFile);
+            } catch {
+              // ignore cleanup failure
+            }
+          }
         } else {
           const msg = messageParts.join(" ");
           if (!msg) {
@@ -107,9 +115,16 @@ export function registerSend(program: Command): void {
           if (msg.includes("\n") || msg.length > 200) {
             const tmpFile = join(tmpdir(), `ao-send-${Date.now()}.txt`);
             writeFileSync(tmpFile, msg);
-            await exec("tmux", ["load-buffer", tmpFile]);
-            await exec("tmux", ["paste-buffer", "-t", session]);
-            unlinkSync(tmpFile);
+            try {
+              await exec("tmux", ["load-buffer", tmpFile]);
+              await exec("tmux", ["paste-buffer", "-t", session]);
+            } finally {
+              try {
+                unlinkSync(tmpFile);
+              } catch {
+                // ignore cleanup failure
+              }
+            }
           } else {
             await exec("tmux", ["send-keys", "-t", session, msg]);
           }

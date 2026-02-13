@@ -54,6 +54,10 @@ export function registerSession(program: Command): void {
     .option("-p, --project <id>", "Filter by project ID")
     .action(async (opts: { project?: string }) => {
       const config = loadConfig();
+      if (opts.project && !config.projects[opts.project]) {
+        console.error(chalk.red(`Unknown project: ${opts.project}`));
+        process.exit(1);
+      }
       const allTmux = await getTmuxSessions();
       const projects = opts.project
         ? { [opts.project]: config.projects[opts.project] }
@@ -115,6 +119,10 @@ export function registerSession(program: Command): void {
     .option("--dry-run", "Show what would be cleaned up without doing it")
     .action(async (opts: { project?: string; dryRun?: boolean }) => {
       const config = loadConfig();
+      if (opts.project && !config.projects[opts.project]) {
+        console.error(chalk.red(`Unknown project: ${opts.project}`));
+        process.exit(1);
+      }
       const allTmux = await getTmuxSessions();
       const projects = opts.project
         ? { [opts.project]: config.projects[opts.project] }

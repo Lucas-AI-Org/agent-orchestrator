@@ -48,6 +48,11 @@ export function registerDashboard(program: Command): void {
       const config = loadConfig();
       const port = opts.port ? parseInt(opts.port, 10) : config.port;
 
+      if (isNaN(port) || port < 1 || port > 65535) {
+        console.error(chalk.red("Invalid port number. Must be 1-65535."));
+        process.exit(1);
+      }
+
       console.log(chalk.bold(`Starting dashboard on http://localhost:${port}\n`));
 
       const webDir = findWebDir();
