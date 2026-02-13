@@ -40,149 +40,154 @@ async function spawnSession(
 
   const spinner = ora(`Creating session ${sessionName}`).start();
 
-  // Fetch latest from remote
-  await git(["fetch", "origin", "--quiet"], project.path);
+  try {
+    // Fetch latest from remote
+    await git(["fetch", "origin", "--quiet"], project.path);
 
-  // Create worktree — sanitize issueId for git ref safety
-  const safeBranchSuffix = issueId
-    ? issueId
-        .replace(/^#/, "") // strip leading #
-        .replace(/[^\w./-]/g, "-") // replace non-ref-safe chars
-        .replace(/\.{2,}/g, ".") // no consecutive dots
-        .replace(/^[.-]|[.-]$/g, "") // no leading/trailing dots or dashes
-    : undefined;
-  const branch = safeBranchSuffix ? `feat/${safeBranchSuffix}` : undefined;
-  const defaultRef = `origin/${project.defaultBranch}`;
+    // Create worktree — sanitize issueId for git ref safety
+    const safeBranchSuffix = issueId
+      ? issueId
+          .replace(/^#/, "") // strip leading #
+          .replace(/[^\w./-]/g, "-") // replace non-ref-safe chars
+          .replace(/\.{2,}/g, ".") // no consecutive dots
+          .replace(/^[.-]|[.-]$/g, "") // no leading/trailing dots or dashes
+      : undefined;
+    const branch = safeBranchSuffix ? `feat/${safeBranchSuffix}` : undefined;
+    const defaultRef = `origin/${project.defaultBranch}`;
 
-  if (branch) {
-    const result = await git(
-      ["worktree", "add", "-b", branch, worktreePath, defaultRef],
-      project.path,
-    );
-    if (!result) {
-      // Branch already exists — check it out in the new worktree
-      await git(["worktree", "add", worktreePath, branch], project.path);
+    if (branch) {
+      const result = await git(
+        ["worktree", "add", "-b", branch, worktreePath, defaultRef],
+        project.path,
+      );
+      if (result === null) {
+        // Branch already exists — check it out in the new worktree
+        await git(["worktree", "add", worktreePath, branch], project.path);
+      }
+    } else {
+      await git(["worktree", "add", worktreePath, defaultRef, "--detach"], project.path);
     }
-  } else {
-    await git(["worktree", "add", worktreePath, defaultRef, "--detach"], project.path);
-  }
 
-  spinner.text = "Setting up workspace";
+    spinner.text = "Setting up workspace";
 
-  // Symlink shared resources
-  if (project.symlinks) {
-    for (const link of project.symlinks) {
-      const src = join(project.path, link);
-      const dest = join(worktreePath, link);
-      if (existsSync(src)) {
+    // Symlink shared resources
+    if (project.symlinks) {
+      for (const link of project.symlinks) {
+        const src = join(project.path, link);
+        const dest = join(worktreePath, link);
+        if (existsSync(src)) {
+          try {
+            unlinkSync(dest);
+          } catch {
+            // ignore
+          }
+          symlinkSync(src, dest);
+        }
+      }
+    }
+
+    // Always symlink common files if they exist
+    for (const file of ["CLAUDE.local.md", ".claude"]) {
+      const src = join(project.path, file);
+      const dest = join(worktreePath, file);
+      if (existsSync(src) && !existsSync(dest)) {
         try {
-          unlinkSync(dest);
+          symlinkSync(src, dest);
         } catch {
           // ignore
         }
-        symlinkSync(src, dest);
       }
     }
-  }
 
-  // Always symlink common files if they exist
-  for (const file of ["CLAUDE.local.md", ".claude"]) {
-    const src = join(project.path, file);
-    const dest = join(worktreePath, file);
-    if (existsSync(src) && !existsSync(dest)) {
+    spinner.text = "Creating tmux session";
+
+    // Create tmux session
+    const envVar = `${prefix.toUpperCase()}_SESSION`;
+    await exec("tmux", [
+      "new-session",
+      "-d",
+      "-s",
+      sessionName,
+      "-c",
+      worktreePath,
+      "-e",
+      `${envVar}=${sessionName}`,
+      "-e",
+      "DIRENV_LOG_FORMAT=",
+    ]);
+
+    // Run post-create hooks before agent launch (so environment is ready)
+    if (project.postCreate) {
+      for (const cmd of project.postCreate) {
+        await exec("tmux", ["send-keys", "-t", sessionName, cmd, "Enter"]);
+      }
+      // Allow hooks to complete before starting agent
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
+    // Start agent
+    const agentName = project.agent || config.defaults.agent;
+    let launchCmd: string;
+    if (agentName === "claude-code") {
+      const perms =
+        project.agentConfig?.permissions === "skip" ? " --dangerously-skip-permissions" : "";
+      launchCmd = `unset CLAUDECODE && claude${perms}`;
+    } else if (agentName === "codex") {
+      launchCmd = "codex";
+    } else if (agentName === "aider") {
+      launchCmd = "aider";
+    } else {
+      launchCmd = agentName;
+    }
+
+    await exec("tmux", ["send-keys", "-t", sessionName, launchCmd, "Enter"]);
+
+    spinner.text = "Writing metadata";
+
+    // Write metadata
+    const sessionDir = getSessionDir(config.dataDir, projectId);
+    mkdirSync(sessionDir, { recursive: true });
+    const liveBranch = await git(["branch", "--show-current"], worktreePath);
+
+    writeMetadata(join(sessionDir, sessionName), {
+      worktree: worktreePath,
+      branch: liveBranch || branch || "detached",
+      status: "starting",
+      project: projectId,
+      ...(issueId ? { issue: issueId } : {}),
+      createdAt: new Date().toISOString(),
+    });
+
+    spinner.succeed(`Session ${chalk.green(sessionName)} created`);
+
+    console.log(`  Worktree: ${chalk.dim(worktreePath)}`);
+    if (branch) console.log(`  Branch:   ${chalk.dim(branch)}`);
+    console.log(`  Attach:   ${chalk.dim(`tmux attach -t ${sessionName}`)}`);
+    console.log();
+
+    // Send initial prompt if we have an issue
+    if (issueId) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const prompt = `Please start working on ${issueId}, fetch ticket info, create the appropriate branch so that github auto links to linear, and start working on the task`;
+      await exec("tmux", ["send-keys", "-t", sessionName, prompt, "Enter"]);
+    }
+
+    // Open terminal tab if requested
+    if (openTab) {
       try {
-        symlinkSync(src, dest);
+        await exec("open-iterm-tab", [sessionName]);
       } catch {
-        // ignore
+        // Terminal plugin not available
       }
     }
+
+    // Output for scripting
+    console.log(`SESSION=${sessionName}`);
+    return sessionName;
+  } catch (err) {
+    spinner.fail(`Failed to create session ${sessionName}`);
+    throw err;
   }
-
-  spinner.text = "Creating tmux session";
-
-  // Create tmux session
-  const envVar = `${prefix.toUpperCase()}_SESSION`;
-  await exec("tmux", [
-    "new-session",
-    "-d",
-    "-s",
-    sessionName,
-    "-c",
-    worktreePath,
-    "-e",
-    `${envVar}=${sessionName}`,
-    "-e",
-    "DIRENV_LOG_FORMAT=",
-  ]);
-
-  // Run post-create hooks before agent launch (so environment is ready)
-  if (project.postCreate) {
-    for (const cmd of project.postCreate) {
-      await exec("tmux", ["send-keys", "-t", sessionName, cmd, "Enter"]);
-    }
-    // Allow hooks to complete before starting agent
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
-
-  // Start agent
-  const agentName = project.agent || config.defaults.agent;
-  let launchCmd: string;
-  if (agentName === "claude-code") {
-    const perms =
-      project.agentConfig?.permissions === "skip" ? " --dangerously-skip-permissions" : "";
-    launchCmd = `unset CLAUDECODE && claude${perms}`;
-  } else if (agentName === "codex") {
-    launchCmd = "codex";
-  } else if (agentName === "aider") {
-    launchCmd = "aider";
-  } else {
-    launchCmd = agentName;
-  }
-
-  await exec("tmux", ["send-keys", "-t", sessionName, launchCmd, "Enter"]);
-
-  spinner.text = "Writing metadata";
-
-  // Write metadata
-  const sessionDir = getSessionDir(config.dataDir, projectId);
-  mkdirSync(sessionDir, { recursive: true });
-  const liveBranch = await git(["branch", "--show-current"], worktreePath);
-
-  writeMetadata(join(sessionDir, sessionName), {
-    worktree: worktreePath,
-    branch: liveBranch || branch || "detached",
-    status: "starting",
-    project: projectId,
-    ...(issueId ? { issue: issueId } : {}),
-    createdAt: new Date().toISOString(),
-  });
-
-  spinner.succeed(`Session ${chalk.green(sessionName)} created`);
-
-  console.log(`  Worktree: ${chalk.dim(worktreePath)}`);
-  if (branch) console.log(`  Branch:   ${chalk.dim(branch)}`);
-  console.log(`  Attach:   ${chalk.dim(`tmux attach -t ${sessionName}`)}`);
-  console.log();
-
-  // Send initial prompt if we have an issue
-  if (issueId) {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    const prompt = `Please start working on ${issueId}, fetch ticket info, create the appropriate branch so that github auto links to linear, and start working on the task`;
-    await exec("tmux", ["send-keys", "-t", sessionName, prompt, "Enter"]);
-  }
-
-  // Open terminal tab if requested
-  if (openTab) {
-    try {
-      await exec("open-iterm-tab", [sessionName]);
-    } catch {
-      // Terminal plugin not available
-    }
-  }
-
-  // Output for scripting
-  console.log(`SESSION=${sessionName}`);
-  return sessionName;
 }
 
 export function registerSpawn(program: Command): void {

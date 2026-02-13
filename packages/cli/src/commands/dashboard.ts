@@ -80,8 +80,11 @@ export function registerDashboard(program: Command): void {
 
       if (opts.open !== false) {
         setTimeout(() => {
-          spawn("open", [`http://localhost:${port}`], {
+          const browser = spawn("open", [`http://localhost:${port}`], {
             stdio: "ignore",
+          });
+          browser.on("error", () => {
+            // Ignore — browser open is best-effort
           });
         }, 3000);
       }

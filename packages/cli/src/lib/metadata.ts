@@ -72,7 +72,7 @@ export async function findSessionForIssue(
     const name = basename(file);
     if (!tmuxSessions.includes(name)) continue;
     const meta = readMetadata(join(sessionDir, file));
-    if (meta?.issue && meta.issue.toLowerCase().includes(lower)) {
+    if (meta?.issue && meta.issue.toLowerCase() === lower) {
       return name;
     }
   }

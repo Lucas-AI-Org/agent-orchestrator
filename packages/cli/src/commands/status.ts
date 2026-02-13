@@ -192,48 +192,54 @@ export function registerStatus(program: Command): void {
         process.exit(1);
       }
 
-      console.log(banner("AGENT ORCHESTRATOR STATUS"));
-      console.log();
+      if (!opts.json) {
+        console.log(banner("AGENT ORCHESTRATOR STATUS"));
+        console.log();
+      }
 
       let totalSessions = 0;
+      const jsonOutput: SessionInfo[] = [];
 
       for (const [projectId, projectConfig] of Object.entries(projects)) {
         const prefix = projectConfig.sessionPrefix || projectId;
         const sessionDir = getSessionDir(config.dataDir, projectId);
         const projectSessions = allTmux.filter((s) => s.startsWith(`${prefix}-`));
 
-        console.log(header(projectConfig.name || projectId));
+        if (!opts.json) {
+          console.log(header(projectConfig.name || projectId));
+        }
 
         if (projectSessions.length === 0) {
-          console.log(chalk.dim("  (no active sessions)"));
-          console.log();
+          if (!opts.json) {
+            console.log(chalk.dim("  (no active sessions)"));
+            console.log();
+          }
           continue;
         }
 
         totalSessions += projectSessions.length;
 
-        const infos: SessionInfo[] = [];
         for (const session of projectSessions.sort()) {
           const info = await gatherSessionInfo(session, sessionDir);
-          infos.push(info);
-        }
-
-        if (opts.json) {
-          console.log(JSON.stringify(infos, null, 2));
-        } else {
-          for (const info of infos) {
+          if (opts.json) {
+            jsonOutput.push(info);
+          } else {
             printSession(info);
             console.log();
           }
         }
       }
 
-      console.log(
-        chalk.dim(
-          `\n  ${totalSessions} active session${totalSessions !== 1 ? "s" : ""} across ${Object.keys(projects).length} project${Object.keys(projects).length !== 1 ? "s" : ""}`,
-        ),
-      );
-      console.log();
+      if (opts.json) {
+        console.log(JSON.stringify(jsonOutput, null, 2));
+      } else {
+        console.log(
+          chalk.dim(
+            `\n  ${totalSessions} active session${totalSessions !== 1 ? "s" : ""} across ${Object.keys(projects).length} project${Object.keys(projects).length !== 1 ? "s" : ""}`,
+          ),
+        );
+        console.log();
+      }
     });
 }
 

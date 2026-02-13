@@ -25,8 +25,12 @@ async function killSession(
   if (worktree) {
     const project = config.projects[projectId];
     if (project) {
-      await git(["worktree", "remove", "--force", worktree], project.path);
-      console.log(chalk.green(`  Removed worktree: ${worktree}`));
+      const removed = await git(["worktree", "remove", "--force", worktree], project.path);
+      if (removed !== null) {
+        console.log(chalk.green(`  Removed worktree: ${worktree}`));
+      } else {
+        console.log(chalk.yellow(`  Failed to remove worktree: ${worktree}`));
+      }
     }
   }
 
