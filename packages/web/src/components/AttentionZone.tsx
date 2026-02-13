@@ -12,12 +12,15 @@ interface AttentionZoneProps {
   onMerge?: (prNumber: number) => void;
 }
 
-const zoneConfig: Record<AttentionLevel, {
-  label: string;
-  description: string;
-  color: string;
-  defaultCollapsed: boolean;
-}> = {
+const zoneConfig: Record<
+  AttentionLevel,
+  {
+    label: string;
+    description: string;
+    color: string;
+    defaultCollapsed: boolean;
+  }
+> = {
   urgent: {
     label: "URGENT",
     description: "Sessions needing human input",
@@ -68,12 +71,13 @@ export function AttentionZone({ level, sessions, onSend, onKill, onMerge }: Atte
         >
           {config.label}
         </span>
-        <span className="text-xs text-[var(--color-text-muted)]">
-          {config.description}
-        </span>
+        <span className="text-xs text-[var(--color-text-muted)]">{config.description}</span>
         <span
           className="ml-auto rounded-full px-2 py-0.5 text-xs font-bold"
-          style={{ color: config.color, background: `color-mix(in srgb, ${config.color} 10%, transparent)` }}
+          style={{
+            color: config.color,
+            background: `color-mix(in srgb, ${config.color} 10%, transparent)`,
+          }}
         >
           {sessions.length}
         </span>

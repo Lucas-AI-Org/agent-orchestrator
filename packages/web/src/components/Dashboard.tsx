@@ -1,8 +1,13 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import type { DashboardSession, DashboardStats, DashboardPR, AttentionLevel } from "@/lib/types";
-import { getAttentionLevel } from "@/lib/types";
+import {
+  type DashboardSession,
+  type DashboardStats,
+  type DashboardPR,
+  type AttentionLevel,
+  getAttentionLevel,
+} from "@/lib/types";
 import { AttentionZone } from "./AttentionZone";
 import { PRTableRow } from "./PRStatus";
 
@@ -28,8 +33,8 @@ export function Dashboard({ sessions, stats }: DashboardProps) {
 
   const openPRs = useMemo(() => {
     return sessions
-      .filter((s) => s.pr?.state === "open")
-      .map((s) => s.pr!)
+      .filter((s): s is DashboardSession & { pr: DashboardPR } => s.pr?.state === "open")
+      .map((s) => s.pr)
       .sort((a, b) => mergeScore(a) - mergeScore(b));
   }, [sessions]);
 
@@ -46,7 +51,9 @@ export function Dashboard({ sessions, stats }: DashboardProps) {
 
   const handleKill = async (sessionId: string) => {
     if (!confirm(`Kill session ${sessionId}?`)) return;
-    const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/kill`, { method: "POST" });
+    const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/kill`, {
+      method: "POST",
+    });
     if (!res.ok) {
       console.error(`Failed to kill ${sessionId}:`, await res.text());
     }
@@ -105,12 +112,24 @@ export function Dashboard({ sessions, stats }: DashboardProps) {
             <table className="w-full border-collapse">
               <thead>
                 <tr className="border-b border-[var(--color-border-muted)]">
-                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">PR</th>
-                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">Title</th>
-                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">Size</th>
-                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">CI</th>
-                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">Review</th>
-                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">Unresolved</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+                    PR
+                  </th>
+                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+                    Title
+                  </th>
+                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+                    Size
+                  </th>
+                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+                    CI
+                  </th>
+                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+                    Review
+                  </th>
+                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+                    Unresolved
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -132,21 +151,23 @@ function ClientTimestamp() {
   useEffect(() => {
     setTime(new Date().toLocaleString());
   }, []);
-  return (
-    <span className="text-xs text-[var(--color-text-muted)]">{time}</span>
-  );
+  return <span className="text-xs text-[var(--color-text-muted)]">{time}</span>;
 }
 
 function Stat({ value, label, color }: { value: number; label: string; color: string }) {
   return (
     <div className="flex items-baseline gap-2">
-      <span className="text-[28px] font-bold" style={{ color }}>{value}</span>
+      <span className="text-[28px] font-bold" style={{ color }}>
+        {value}
+      </span>
       <span className="text-[13px] text-[var(--color-text-muted)]">{label}</span>
     </div>
   );
 }
 
-function mergeScore(pr: Pick<DashboardPR, "ciStatus" | "reviewDecision" | "mergeability" | "unresolvedThreads">): number {
+function mergeScore(
+  pr: Pick<DashboardPR, "ciStatus" | "reviewDecision" | "mergeability" | "unresolvedThreads">,
+): number {
   let score = 0;
   if (!pr.mergeability.noConflicts) score += 40;
   if (pr.ciStatus === "failing") score += 30;

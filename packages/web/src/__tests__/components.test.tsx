@@ -76,8 +76,8 @@ describe("CICheckList", () => {
     const { container } = render(<CICheckList checks={checks} />);
     const names = Array.from(container.querySelectorAll(".truncate")).map((el) => el.textContent);
     expect(names[0]).toBe("build"); // failed first
-    expect(names[1]).toBe("test");  // running second
-    expect(names[2]).toBe("lint");  // passed last
+    expect(names[1]).toBe("test"); // running second
+    expect(names[2]).toBe("lint"); // passed last
   });
 
   it("renders view links for checks with URLs", () => {
@@ -199,7 +199,13 @@ describe("SessionCard", () => {
     const pr = makePR({
       number: 42,
       state: "open",
-      mergeability: { mergeable: true, ciPassing: true, approved: true, noConflicts: true, blockers: [] },
+      mergeability: {
+        mergeable: true,
+        ciPassing: true,
+        approved: true,
+        noConflicts: true,
+        blockers: [],
+      },
     });
     const session = makeSession({ status: "mergeable", activity: "idle", pr });
     render(<SessionCard session={session} />);
@@ -211,7 +217,13 @@ describe("SessionCard", () => {
     const pr = makePR({
       number: 42,
       state: "open",
-      mergeability: { mergeable: true, ciPassing: true, approved: true, noConflicts: true, blockers: [] },
+      mergeability: {
+        mergeable: true,
+        ciPassing: true,
+        approved: true,
+        noConflicts: true,
+        blockers: [],
+      },
     });
     const session = makeSession({ status: "mergeable", activity: "idle", pr });
     render(<SessionCard session={session} onMerge={onMerge} />);
@@ -228,7 +240,13 @@ describe("SessionCard", () => {
         { name: "test", status: "failed" },
       ],
       reviewDecision: "approved",
-      mergeability: { mergeable: false, ciPassing: false, approved: true, noConflicts: true, blockers: [] },
+      mergeability: {
+        mergeable: false,
+        ciPassing: false,
+        approved: true,
+        noConflicts: true,
+        blockers: [],
+      },
     });
     const session = makeSession({ status: "ci_failed", activity: "idle", pr });
     render(<SessionCard session={session} />);
@@ -240,7 +258,13 @@ describe("SessionCard", () => {
       state: "open",
       ciStatus: "passing",
       reviewDecision: "changes_requested",
-      mergeability: { mergeable: false, ciPassing: true, approved: false, noConflicts: true, blockers: [] },
+      mergeability: {
+        mergeable: false,
+        ciPassing: true,
+        approved: false,
+        noConflicts: true,
+        blockers: [],
+      },
     });
     const session = makeSession({ activity: "idle", pr });
     render(<SessionCard session={session} />);
@@ -252,7 +276,13 @@ describe("SessionCard", () => {
       state: "open",
       ciStatus: "passing",
       reviewDecision: "pending",
-      mergeability: { mergeable: false, ciPassing: true, approved: false, noConflicts: true, blockers: [] },
+      mergeability: {
+        mergeable: false,
+        ciPassing: true,
+        approved: false,
+        noConflicts: true,
+        blockers: [],
+      },
     });
     const session = makeSession({ activity: "idle", pr });
     render(<SessionCard session={session} />);
@@ -270,7 +300,13 @@ describe("SessionCard", () => {
         { url: "https://example.com/2", path: "src/b.ts", author: "bob", body: "fix" },
         { url: "https://example.com/3", path: "src/c.ts", author: "carol", body: "fix" },
       ],
-      mergeability: { mergeable: false, ciPassing: true, approved: true, noConflicts: true, blockers: [] },
+      mergeability: {
+        mergeable: false,
+        ciPassing: true,
+        approved: true,
+        noConflicts: true,
+        blockers: [],
+      },
     });
     const session = makeSession({ activity: "idle", pr });
     render(<SessionCard session={session} />);
@@ -284,7 +320,13 @@ describe("SessionCard", () => {
       ciStatus: "failing",
       ciChecks: [{ name: "test", status: "failed" }],
       reviewDecision: "approved",
-      mergeability: { mergeable: false, ciPassing: false, approved: true, noConflicts: true, blockers: [] },
+      mergeability: {
+        mergeable: false,
+        ciPassing: false,
+        approved: true,
+        noConflicts: true,
+        blockers: [],
+      },
     });
     const session = makeSession({ activity: "idle", pr });
     render(<SessionCard session={session} />);
@@ -297,7 +339,13 @@ describe("SessionCard", () => {
       ciStatus: "failing",
       ciChecks: [{ name: "test", status: "failed" }],
       reviewDecision: "approved",
-      mergeability: { mergeable: false, ciPassing: false, approved: true, noConflicts: true, blockers: [] },
+      mergeability: {
+        mergeable: false,
+        ciPassing: false,
+        approved: true,
+        noConflicts: true,
+        blockers: [],
+      },
     });
     const session = makeSession({ activity: "active", pr });
     render(<SessionCard session={session} />);
@@ -326,10 +374,7 @@ describe("SessionCard", () => {
 
 describe("AttentionZone", () => {
   it("renders zone label and session count", () => {
-    const sessions = [
-      makeSession({ id: "s1" }),
-      makeSession({ id: "s2" }),
-    ];
+    const sessions = [makeSession({ id: "s1" }), makeSession({ id: "s2" })];
     render(<AttentionZone level="urgent" sessions={sessions} />);
     expect(screen.getByText("URGENT")).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();

@@ -39,9 +39,10 @@ export function CIBadge({ status, checks, compact }: CIBadgeProps) {
     return <span className="text-xs text-[var(--color-text-muted)]">&mdash;</span>;
   }
 
-  const label = status === "failing" && failedCount > 0
-    ? `${failedCount} check${failedCount > 1 ? "s" : ""} failing`
-    : config.label;
+  const label =
+    status === "failing" && failedCount > 0
+      ? `${failedCount} check${failedCount > 1 ? "s" : ""} failing`
+      : config.label;
 
   return (
     <span
@@ -67,7 +68,13 @@ const checkStatusIcon: Record<DashboardCICheck["status"], { icon: string; color:
 
 export function CICheckList({ checks }: CICheckListProps) {
   const sorted = [...checks].sort((a, b) => {
-    const order: Record<DashboardCICheck["status"], number> = { failed: 0, running: 1, pending: 2, passed: 3, skipped: 4 };
+    const order: Record<DashboardCICheck["status"], number> = {
+      failed: 0,
+      running: 1,
+      pending: 2,
+      passed: 3,
+      skipped: 4,
+    };
     return order[a.status] - order[b.status];
   });
 

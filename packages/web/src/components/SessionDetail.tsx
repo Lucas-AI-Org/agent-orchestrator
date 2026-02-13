@@ -1,7 +1,6 @@
 "use client";
 
-import type { DashboardSession } from "@/lib/types";
-import { getAttentionLevel } from "@/lib/types";
+import { type DashboardSession, getAttentionLevel } from "@/lib/types";
 import { PRStatus } from "./PRStatus";
 import { CICheckList } from "./CIBadge";
 import { Terminal } from "./Terminal";
@@ -21,7 +20,10 @@ const activityLabel: Record<string, { label: string; color: string }> = {
 export function SessionDetail({ session }: SessionDetailProps) {
   const pr = session.pr;
   const level = getAttentionLevel(session);
-  const activity = activityLabel[session.activity] ?? { label: session.activity, color: "var(--color-text-muted)" };
+  const activity = activityLabel[session.activity] ?? {
+    label: session.activity,
+    color: "var(--color-text-muted)",
+  };
 
   return (
     <div className="mx-auto max-w-[900px] px-8 py-8">
@@ -210,10 +212,15 @@ function ReadinessItem({ label, ok }: { label: string; ok: boolean }) {
 
 function levelColor(level: string): string {
   switch (level) {
-    case "urgent": return "var(--color-accent-red)";
-    case "action": return "var(--color-accent-green)";
-    case "warning": return "var(--color-accent-yellow)";
-    case "ok": return "var(--color-accent-blue)";
-    default: return "var(--color-text-muted)";
+    case "urgent":
+      return "var(--color-accent-red)";
+    case "action":
+      return "var(--color-accent-green)";
+    case "warning":
+      return "var(--color-accent-yellow)";
+    case "ok":
+      return "var(--color-accent-blue)";
+    default:
+      return "var(--color-text-muted)";
   }
 }

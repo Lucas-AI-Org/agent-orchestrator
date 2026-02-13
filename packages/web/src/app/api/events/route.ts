@@ -25,9 +25,7 @@ export async function GET(): Promise<Response> {
           lastActivityAt: s.lastActivityAt,
         })),
       };
-      controller.enqueue(
-        encoder.encode(`data: ${JSON.stringify(initialEvent)}\n\n`),
-      );
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(initialEvent)}\n\n`));
 
       // Send periodic heartbeat
       heartbeat = setInterval(() => {
@@ -52,9 +50,7 @@ export async function GET(): Promise<Response> {
             attentionLevel: getAttentionLevel(randomSession),
             timestamp: new Date().toISOString(),
           };
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
-          );
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
         } catch {
           clearInterval(updates);
           clearInterval(heartbeat);

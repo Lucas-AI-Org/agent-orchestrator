@@ -1,11 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { mockSessions } from "@/lib/mock-data";
 
 /** POST /api/prs/:id/merge — Merge a PR */
-export async function POST(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!/^\d+$/.test(id)) {
     return NextResponse.json({ error: "Invalid PR number" }, { status: 400 });

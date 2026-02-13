@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import type { DashboardSession, AttentionLevel } from "@/lib/types";
-import { getAttentionLevel } from "@/lib/types";
+import { type DashboardSession, type AttentionLevel, getAttentionLevel } from "@/lib/types";
 import { cn } from "@/lib/cn";
 import { PRStatus } from "./PRStatus";
 import { CICheckList } from "./CIBadge";
@@ -70,7 +69,12 @@ export function SessionCard({ session, onSend, onKill, onMerge }: SessionCardPro
     >
       {/* Top row */}
       <div className="flex items-center gap-2.5 px-4 pt-3 pb-1.5">
-        <span className={cn("shrink-0 text-sm", session.activity === "active" && "animate-[pulse_2s_ease-in-out_infinite]")}>
+        <span
+          className={cn(
+            "shrink-0 text-sm",
+            session.activity === "active" && "animate-[pulse_2s_ease-in-out_infinite]",
+          )}
+        >
           {activityIcon[session.activity] ?? "\u2753"}
         </span>
         <span className="shrink-0 text-[13px] font-semibold text-[var(--color-text-secondary)]">
@@ -81,7 +85,10 @@ export function SessionCard({ session, onSend, onKill, onMerge }: SessionCardPro
         </span>
         {session.activity === "exited" && (
           <button
-            onClick={(e) => { e.stopPropagation(); onKill?.(session.id); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onKill?.(session.id);
+            }}
             className="shrink-0 rounded-md border border-[rgba(248,81,73,0.4)] px-2.5 py-0.5 text-[11px] text-[var(--color-accent-red)] transition-colors hover:bg-[rgba(248,81,73,0.15)]"
           >
             kill session
@@ -112,12 +119,15 @@ export function SessionCard({ session, onSend, onKill, onMerge }: SessionCardPro
       {/* Alert tags */}
       {(alerts.length > 0 || isReadyToMerge) && (
         <div className="flex flex-wrap items-center gap-1.5 px-4 pb-2 pl-[42px]">
-          {isReadyToMerge ? (
+          {isReadyToMerge && pr ? (
             <button
-              onClick={(e) => { e.stopPropagation(); onMerge?.(pr!.number); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onMerge?.(pr.number);
+              }}
               className="inline-flex items-center gap-1.5 rounded-md border border-[rgba(63,185,80,0.4)] bg-[rgba(63,185,80,0.2)] px-3 py-1 text-[13px] font-bold text-[var(--color-accent-green)] hover:brightness-125"
             >
-              merge PR #{pr!.number}
+              merge PR #{pr.number}
             </button>
           ) : (
             alerts.map((alert) => (
@@ -139,7 +149,10 @@ export function SessionCard({ session, onSend, onKill, onMerge }: SessionCardPro
                 </a>
                 {alert.actionLabel && session.activity !== "active" && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); handleAction(alert.key, alert.actionMessage!); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAction(alert.key, alert.actionMessage ?? "");
+                    }}
                     disabled={sendingAction === alert.key}
                     className="ml-1.5 rounded-md border border-[rgba(88,166,255,0.3)] px-2.5 py-0.5 text-[11px] text-[var(--color-accent-blue)] transition-colors hover:bg-[rgba(88,166,255,0.1)] disabled:opacity-50"
                   >
@@ -180,11 +193,18 @@ export function SessionCard({ session, onSend, onKill, onMerge }: SessionCardPro
               <div className="space-y-1">
                 {pr.unresolvedComments.map((c) => (
                   <div key={c.url} className="flex items-center gap-2 text-xs">
-                    <span className="w-3.5 shrink-0 text-center text-[var(--color-accent-red)]">{"\u25CF"}</span>
+                    <span className="w-3.5 shrink-0 text-center text-[var(--color-accent-red)]">
+                      {"\u25CF"}
+                    </span>
                     <span className="min-w-0 flex-1 truncate text-[var(--color-text-secondary)]">
                       {c.path}
                     </span>
-                    <a href={c.url} target="_blank" rel="noopener noreferrer" className="shrink-0 text-[11px] text-[var(--color-accent-blue)] hover:underline">
+                    <a
+                      href={c.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 text-[11px] text-[var(--color-accent-blue)] hover:underline"
+                    >
                       go to comment
                     </a>
                   </div>
@@ -196,7 +216,9 @@ export function SessionCard({ session, onSend, onKill, onMerge }: SessionCardPro
           {pr && (
             <DetailSection label="PR Details">
               <p className="text-xs text-[var(--color-text-secondary)]">
-                <a href={pr.url} target="_blank" rel="noopener noreferrer">{pr.title}</a>
+                <a href={pr.url} target="_blank" rel="noopener noreferrer">
+                  {pr.title}
+                </a>
                 <br />
                 <span className="text-[var(--color-accent-green)]">+{pr.additions}</span>{" "}
                 <span className="text-[var(--color-accent-red)]">-{pr.deletions}</span>
@@ -214,7 +236,10 @@ export function SessionCard({ session, onSend, onKill, onMerge }: SessionCardPro
 
           <div className="mt-3 flex gap-2 border-t border-[var(--color-border-muted)] pt-3">
             <button
-              onClick={(e) => { e.stopPropagation(); onKill?.(session.id); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onKill?.(session.id);
+              }}
               className="rounded-md border border-[rgba(248,81,73,0.4)] px-2.5 py-0.5 text-[11px] text-[var(--color-accent-red)] transition-colors hover:bg-[rgba(248,81,73,0.15)]"
             >
               terminate session
@@ -260,7 +285,8 @@ function getAlerts(session: DashboardSession): Alert[] {
     alerts.push({
       key: "ci-fail",
       label: `${failCount} CI check${failCount > 1 ? "s" : ""} failing`,
-      className: "border-[rgba(248,81,73,0.3)] bg-[rgba(248,81,73,0.15)] text-[var(--color-accent-red)]",
+      className:
+        "border-[rgba(248,81,73,0.3)] bg-[rgba(248,81,73,0.15)] text-[var(--color-accent-red)]",
       url: failedCheck?.url ?? pr.url + "/checks",
       actionLabel: "ask to fix CI",
       actionMessage: `Please fix the failing CI checks on ${pr.url}`,
@@ -272,14 +298,16 @@ function getAlerts(session: DashboardSession): Alert[] {
     alerts.push({
       key: "changes",
       label: "changes requested",
-      className: "border-[rgba(248,81,73,0.3)] bg-[rgba(248,81,73,0.15)] text-[var(--color-accent-red)]",
+      className:
+        "border-[rgba(248,81,73,0.3)] bg-[rgba(248,81,73,0.15)] text-[var(--color-accent-red)]",
       url: pr.url,
     });
   } else if (pr.reviewDecision === "pending" || pr.reviewDecision === "none") {
     alerts.push({
       key: "review",
       label: "needs review",
-      className: "border-[rgba(210,153,34,0.3)] bg-[rgba(210,153,34,0.15)] text-[var(--color-accent-yellow)]",
+      className:
+        "border-[rgba(210,153,34,0.3)] bg-[rgba(210,153,34,0.15)] text-[var(--color-accent-yellow)]",
       url: pr.url,
       actionLabel: "ask to post for review",
       actionMessage: `Post ${pr.url} on slack asking for a review.`,
@@ -291,7 +319,8 @@ function getAlerts(session: DashboardSession): Alert[] {
     alerts.push({
       key: "conflict",
       label: "merge conflict",
-      className: "border-[rgba(248,81,73,0.3)] bg-[rgba(248,81,73,0.15)] text-[var(--color-accent-red)]",
+      className:
+        "border-[rgba(248,81,73,0.3)] bg-[rgba(248,81,73,0.15)] text-[var(--color-accent-red)]",
       url: pr.url,
       actionLabel: "ask to fix conflicts",
       actionMessage: `Please resolve the merge conflicts on ${pr.url} by rebasing on the base branch`,
@@ -305,7 +334,8 @@ function getAlerts(session: DashboardSession): Alert[] {
       key: "comments",
       label: "unresolved comments",
       count: pr.unresolvedThreads,
-      className: "border-[rgba(248,81,73,0.3)] bg-[rgba(248,81,73,0.15)] text-[var(--color-accent-red)]",
+      className:
+        "border-[rgba(248,81,73,0.3)] bg-[rgba(248,81,73,0.15)] text-[var(--color-accent-red)]",
       url: firstUrl,
       actionLabel: "ask to resolve",
       actionMessage: `Please address all unresolved review comments on ${pr.url}`,

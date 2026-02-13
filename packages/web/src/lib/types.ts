@@ -119,7 +119,11 @@ export function getAttentionLevel(session: DashboardSession): AttentionLevel {
   if (session.activity === "waiting_input" || session.activity === "blocked") {
     return "urgent";
   }
-  if (session.status === "needs_input" || session.status === "stuck" || session.status === "errored") {
+  if (
+    session.status === "needs_input" ||
+    session.status === "stuck" ||
+    session.status === "errored"
+  ) {
     return "urgent";
   }
 

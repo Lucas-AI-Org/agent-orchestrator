@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { validateIdentifier } from "@/lib/validation";
 
 /** POST /api/spawn — Spawn a new session */

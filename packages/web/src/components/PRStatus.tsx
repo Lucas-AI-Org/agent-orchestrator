@@ -48,9 +48,7 @@ export function PRStatus({ pr }: PRStatusProps) {
       )}
 
       {/* CI status (only for open PRs) */}
-      {pr.state === "open" && !pr.isDraft && (
-        <CIBadge status={pr.ciStatus} checks={pr.ciChecks} />
-      )}
+      {pr.state === "open" && !pr.isDraft && <CIBadge status={pr.ciStatus} checks={pr.ciChecks} />}
 
       {/* Review decision (only for open PRs) */}
       {pr.state === "open" && pr.reviewDecision === "approved" && (
@@ -69,17 +67,19 @@ interface PRTableRowProps {
 export function PRTableRow({ pr }: PRTableRowProps) {
   const sizeLabel = getSizeLabel(pr.additions, pr.deletions);
 
-  const reviewLabel = pr.reviewDecision === "approved"
-    ? "approved"
-    : pr.reviewDecision === "changes_requested"
-      ? "changes requested"
-      : "needs review";
+  const reviewLabel =
+    pr.reviewDecision === "approved"
+      ? "approved"
+      : pr.reviewDecision === "changes_requested"
+        ? "changes requested"
+        : "needs review";
 
-  const reviewClass = pr.reviewDecision === "approved"
-    ? "text-[var(--color-accent-green)]"
-    : pr.reviewDecision === "changes_requested"
-      ? "text-[var(--color-accent-red)]"
-      : "text-[var(--color-accent-yellow)]";
+  const reviewClass =
+    pr.reviewDecision === "approved"
+      ? "text-[var(--color-accent-green)]"
+      : pr.reviewDecision === "changes_requested"
+        ? "text-[var(--color-accent-red)]"
+        : "text-[var(--color-accent-yellow)]";
 
   return (
     <tr className="border-b border-[var(--color-border-muted)] hover:bg-[rgba(88,166,255,0.03)]">
@@ -88,9 +88,7 @@ export function PRTableRow({ pr }: PRTableRowProps) {
           #{pr.number}
         </a>
       </td>
-      <td className="max-w-[420px] truncate px-3 py-2.5 text-sm font-medium">
-        {pr.title}
-      </td>
+      <td className="max-w-[420px] truncate px-3 py-2.5 text-sm font-medium">{pr.title}</td>
       <td className="px-3 py-2.5 text-sm">
         <span className="text-[var(--color-accent-green)]">+{pr.additions}</span>{" "}
         <span className="text-[var(--color-accent-red)]">-{pr.deletions}</span>{" "}
@@ -99,10 +97,10 @@ export function PRTableRow({ pr }: PRTableRowProps) {
       <td className="px-3 py-2.5">
         <CIBadge status={pr.ciStatus} checks={pr.ciChecks} compact />
       </td>
-      <td className={`px-3 py-2.5 text-xs font-semibold ${reviewClass}`}>
-        {reviewLabel}
-      </td>
-      <td className={`px-3 py-2.5 text-center text-sm font-bold ${pr.unresolvedThreads > 0 ? "text-[var(--color-accent-red)]" : "text-[var(--color-border-default)]"}`}>
+      <td className={`px-3 py-2.5 text-xs font-semibold ${reviewClass}`}>{reviewLabel}</td>
+      <td
+        className={`px-3 py-2.5 text-center text-sm font-bold ${pr.unresolvedThreads > 0 ? "text-[var(--color-accent-red)]" : "text-[var(--color-border-default)]"}`}
+      >
         {pr.unresolvedThreads}
       </td>
     </tr>

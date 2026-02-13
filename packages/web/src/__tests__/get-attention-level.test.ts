@@ -36,7 +36,13 @@ describe("getAttentionLevel", () => {
         ciStatus: "failing",
         ciChecks: [{ name: "test", status: "failed" }],
         reviewDecision: "approved",
-        mergeability: { mergeable: false, ciPassing: false, approved: true, noConflicts: true, blockers: ["CI failing"] },
+        mergeability: {
+          mergeable: false,
+          ciPassing: false,
+          approved: true,
+          noConflicts: true,
+          blockers: ["CI failing"],
+        },
       });
       const session = makeSession({ status: "ci_failed", activity: "idle", pr });
       expect(getAttentionLevel(session)).toBe("urgent");
@@ -46,7 +52,13 @@ describe("getAttentionLevel", () => {
       const pr = makePR({
         ciStatus: "passing",
         reviewDecision: "changes_requested",
-        mergeability: { mergeable: false, ciPassing: true, approved: false, noConflicts: true, blockers: ["Changes requested"] },
+        mergeability: {
+          mergeable: false,
+          ciPassing: true,
+          approved: false,
+          noConflicts: true,
+          blockers: ["Changes requested"],
+        },
       });
       const session = makeSession({ status: "changes_requested", activity: "idle", pr });
       expect(getAttentionLevel(session)).toBe("urgent");
@@ -56,7 +68,13 @@ describe("getAttentionLevel", () => {
       const pr = makePR({
         ciStatus: "passing",
         reviewDecision: "approved",
-        mergeability: { mergeable: false, ciPassing: true, approved: true, noConflicts: false, blockers: ["Merge conflict"] },
+        mergeability: {
+          mergeable: false,
+          ciPassing: true,
+          approved: true,
+          noConflicts: false,
+          blockers: ["Merge conflict"],
+        },
       });
       const session = makeSession({ status: "pr_open", activity: "idle", pr });
       expect(getAttentionLevel(session)).toBe("urgent");
@@ -64,7 +82,15 @@ describe("getAttentionLevel", () => {
 
     it("urgent takes priority over PR state", () => {
       // Even with a mergeable PR, if activity is blocked it's urgent
-      const pr = makePR({ mergeability: { mergeable: true, ciPassing: true, approved: true, noConflicts: true, blockers: [] } });
+      const pr = makePR({
+        mergeability: {
+          mergeable: true,
+          ciPassing: true,
+          approved: true,
+          noConflicts: true,
+          blockers: [],
+        },
+      });
       const session = makeSession({ activity: "blocked", pr });
       expect(getAttentionLevel(session)).toBe("urgent");
     });
@@ -75,7 +101,13 @@ describe("getAttentionLevel", () => {
   describe("action zone", () => {
     it("returns action when PR is mergeable", () => {
       const pr = makePR({
-        mergeability: { mergeable: true, ciPassing: true, approved: true, noConflicts: true, blockers: [] },
+        mergeability: {
+          mergeable: true,
+          ciPassing: true,
+          approved: true,
+          noConflicts: true,
+          blockers: [],
+        },
       });
       const session = makeSession({ status: "mergeable", activity: "idle", pr });
       expect(getAttentionLevel(session)).toBe("action");
@@ -88,7 +120,13 @@ describe("getAttentionLevel", () => {
     it("returns warning when review is pending", () => {
       const pr = makePR({
         reviewDecision: "pending",
-        mergeability: { mergeable: false, ciPassing: true, approved: false, noConflicts: true, blockers: ["Needs review"] },
+        mergeability: {
+          mergeable: false,
+          ciPassing: true,
+          approved: false,
+          noConflicts: true,
+          blockers: ["Needs review"],
+        },
       });
       const session = makeSession({ status: "review_pending", activity: "idle", pr });
       expect(getAttentionLevel(session)).toBe("warning");
@@ -102,7 +140,13 @@ describe("getAttentionLevel", () => {
           { url: "https://example.com/1", path: "src/foo.ts", author: "bob", body: "fix this" },
           { url: "https://example.com/2", path: "src/bar.ts", author: "bob", body: "also this" },
         ],
-        mergeability: { mergeable: false, ciPassing: true, approved: true, noConflicts: true, blockers: ["Unresolved comments"] },
+        mergeability: {
+          mergeable: false,
+          ciPassing: true,
+          approved: true,
+          noConflicts: true,
+          blockers: ["Unresolved comments"],
+        },
       });
       const session = makeSession({ status: "pr_open", activity: "idle", pr });
       expect(getAttentionLevel(session)).toBe("warning");
