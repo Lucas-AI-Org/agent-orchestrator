@@ -27,6 +27,14 @@ export const manifest = {
 // Agent Implementation
 // =============================================================================
 
+/**
+ * POSIX-safe shell escaping: wraps value in single quotes,
+ * escaping any embedded single quotes as '\'' .
+ */
+function shellEscape(arg: string): string {
+  return "'" + arg.replace(/'/g, "'\\''") + "'";
+}
+
 function createAiderAgent(): Agent {
   return {
     name: "aider",
@@ -35,19 +43,16 @@ function createAiderAgent(): Agent {
     getLaunchCommand(config: AgentLaunchConfig): string {
       const parts: string[] = ["aider"];
 
-      // Yes mode skips confirmations
       if (config.permissions === "skip") {
         parts.push("--yes");
       }
 
-      // Model override
       if (config.model) {
-        parts.push("--model", config.model);
+        parts.push("--model", shellEscape(config.model));
       }
 
-      // Pass prompt via --message flag
       if (config.prompt) {
-        parts.push("--message", JSON.stringify(config.prompt));
+        parts.push("--message", shellEscape(config.prompt));
       }
 
       return parts.join(" ");

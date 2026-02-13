@@ -33,10 +33,17 @@ export const manifest = {
 
 /**
  * Convert a workspace path to Claude's project directory path.
- * Claude stores sessions at ~/.claude/projects/{path-with-slashes-and-dots-as-dashes}/
+ * Claude stores sessions at ~/.claude/projects/{encoded-path}/
+ *
+ * Verified against Claude Code's actual encoding (as of v1.x):
+ * the path has its leading / stripped, then all / and . are replaced with -.
+ * e.g. /Users/dev/.worktrees/ao → Users-dev--worktrees-ao
+ *
+ * If Claude Code changes its encoding scheme this will silently break
+ * introspection. The path can be validated at runtime by checking whether
+ * the resulting directory exists.
  */
 function toClaudeProjectPath(workspacePath: string): string {
-  // Remove leading slash, replace / and . with -
   return workspacePath.replace(/^\//, "").replace(/[/.]/g, "-");
 }
 
@@ -149,11 +156,11 @@ function extractCost(lines: JsonlLine[]): CostEstimate | undefined {
   let totalCost = 0;
 
   for (const line of lines) {
-    // Handle direct cost fields
+    // Handle direct cost fields — prefer costUSD; only use estimatedCostUsd
+    // as fallback to avoid double-counting when both are present.
     if (typeof line.costUSD === "number") {
       totalCost += line.costUSD;
-    }
-    if (typeof line.estimatedCostUsd === "number") {
+    } else if (typeof line.estimatedCostUsd === "number") {
       totalCost += line.estimatedCostUsd;
     }
     // Handle usage objects
@@ -176,7 +183,10 @@ function extractCost(lines: JsonlLine[]): CostEstimate | undefined {
     return undefined;
   }
 
-  // Estimate cost if not directly provided (Claude Sonnet 4.5 pricing as fallback)
+  // Rough estimate when no direct cost data — uses Sonnet 4.5 pricing as a
+  // baseline. Will be inaccurate for other models (Opus, Haiku) but provides
+  // a useful order-of-magnitude signal. TODO: make pricing configurable or
+  // infer from model field in JSONL.
   if (totalCost === 0 && (inputTokens > 0 || outputTokens > 0)) {
     totalCost =
       (inputTokens / 1_000_000) * 3.0 + (outputTokens / 1_000_000) * 15.0;
@@ -186,12 +196,31 @@ function extractCost(lines: JsonlLine[]): CostEstimate | undefined {
 }
 
 // =============================================================================
+// Shell Escaping
+// =============================================================================
+
+/**
+ * POSIX-safe shell escaping: wraps value in single quotes,
+ * escaping any embedded single quotes as '\'' .
+ */
+function shellEscape(arg: string): string {
+  return "'" + arg.replace(/'/g, "'\\''") + "'";
+}
+
+// =============================================================================
 // Activity Detection Patterns
 // =============================================================================
 
-/** Patterns indicating Claude is actively processing */
+/**
+ * Patterns indicating Claude is actively processing.
+ *
+ * Stable indicators: "⏺" (the recording dot), "esc to interrupt".
+ * The animated thinking words (Thinking, Pondering, etc.) are Claude CLI
+ * internal UX that may change between versions — listed here as best-effort
+ * but the first two are the most reliable.
+ */
 const ACTIVE_PATTERNS =
-  /Thinking|Roosting|Garnishing|Levitating|Baking|Whirring|Pondering|Reflecting|Analyzing|Considering|\u23FA|esc to interrupt/;
+  /\u23FA|esc to interrupt|Thinking|Pondering|Analyzing/;
 
 /** Patterns indicating Claude is at the prompt (idle) */
 const IDLE_PATTERNS = /^[❯>]\s*$/m;
@@ -200,9 +229,13 @@ const IDLE_PATTERNS = /^[❯>]\s*$/m;
 const INPUT_PATTERNS =
   /\[y\/N\]|\[Y\/n\]|Continue\?|Proceed\?|Do you want|Allow|Approve|Permission/i;
 
-/** Patterns indicating Claude is blocked or errored */
+/**
+ * Patterns indicating Claude is blocked or errored.
+ * Intentionally specific to avoid false positives from code output the agent
+ * is working on (e.g. "Fixed the error in auth.ts" should NOT trigger blocked).
+ */
 const BLOCKED_PATTERNS =
-  /error|failed|permission denied|blocked|quota exceeded|rate limit|ENOENT|EACCES|timeout/i;
+  /^Error:|^✗|ENOENT:|EACCES:|quota exceeded|rate limit exceeded|APIError:|NetworkError:/m;
 
 // =============================================================================
 // Process Detection
@@ -257,10 +290,8 @@ async function findClaudeProcess(
       }
     }
 
-    // Generic fallback: check if any claude process exists
-    const { stdout } = await execFileAsync("pgrep", ["-x", "claude"]);
-    const firstPid = stdout.trim().split("\n")[0];
-    return firstPid ? parseInt(firstPid, 10) : null;
+    // No reliable way to identify the correct process for this session
+    return null;
   } catch {
     return null;
   }
@@ -276,22 +307,20 @@ function createClaudeCodeAgent(): Agent {
     processName: "claude",
 
     getLaunchCommand(config: AgentLaunchConfig): string {
-      const parts: string[] = ["unset CLAUDECODE &&", "claude"];
+      // Note: CLAUDECODE is unset via getEnvironment() (set to ""), not here.
+      // This command must be safe for both shell and execFile contexts.
+      const parts: string[] = ["claude"];
 
-      // Skip permissions if configured
       if (config.permissions === "skip") {
         parts.push("--dangerously-skip-permissions");
       }
 
-      // Model override
       if (config.model) {
-        parts.push("--model", config.model);
+        parts.push("--model", shellEscape(config.model));
       }
 
-      // Resume session by passing prompt inline
       if (config.prompt) {
-        // Use --print for non-interactive mode, or just pass as first arg
-        parts.push("-p", JSON.stringify(config.prompt));
+        parts.push("-p", shellEscape(config.prompt));
       }
 
       return parts.join(" ");
@@ -342,12 +371,16 @@ function createClaudeCodeAgent(): Agent {
         return "active";
       }
 
-      if (!output || output.trim() === "") return "exited";
+      // Empty/null output with a confirmed-alive process means the pane
+      // hasn't rendered yet or was cleared — not that the process exited.
+      if (!output || output.trim() === "") return "idle";
 
-      // Check patterns in priority order
+      // Check patterns in priority order.
+      // Blocked before input: error messages like "EACCES: permission denied"
+      // contain words ("permission") that INPUT_PATTERNS would match.
       if (ACTIVE_PATTERNS.test(output)) return "active";
-      if (INPUT_PATTERNS.test(output)) return "waiting_input";
       if (BLOCKED_PATTERNS.test(output)) return "blocked";
+      if (INPUT_PATTERNS.test(output)) return "waiting_input";
       if (IDLE_PATTERNS.test(output)) return "idle";
 
       // Default: if process is running but no clear pattern, assume active

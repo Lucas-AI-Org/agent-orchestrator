@@ -27,6 +27,14 @@ export const manifest = {
 // Agent Implementation
 // =============================================================================
 
+/**
+ * POSIX-safe shell escaping: wraps value in single quotes,
+ * escaping any embedded single quotes as '\'' .
+ */
+function shellEscape(arg: string): string {
+  return "'" + arg.replace(/'/g, "'\\''") + "'";
+}
+
 function createCodexAgent(): Agent {
   return {
     name: "codex",
@@ -35,19 +43,16 @@ function createCodexAgent(): Agent {
     getLaunchCommand(config: AgentLaunchConfig): string {
       const parts: string[] = ["codex"];
 
-      // Full auto mode skips confirmations
       if (config.permissions === "skip") {
         parts.push("--approval-mode", "full-auto");
       }
 
-      // Model override
       if (config.model) {
-        parts.push("--model", config.model);
+        parts.push("--model", shellEscape(config.model));
       }
 
-      // Pass prompt as argument
       if (config.prompt) {
-        parts.push(JSON.stringify(config.prompt));
+        parts.push(shellEscape(config.prompt));
       }
 
       return parts.join(" ");
