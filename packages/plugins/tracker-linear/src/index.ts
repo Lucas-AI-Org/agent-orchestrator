@@ -66,6 +66,7 @@ async function linearQuery<T>(
       },
       (res) => {
         const chunks: Buffer[] = [];
+        res.on("error", (err: Error) => settle(() => reject(err)));
         res.on("data", (chunk: Buffer) => chunks.push(chunk));
         res.on("end", () => {
           settle(() => {
@@ -392,6 +393,62 @@ function createLinearTracker(): Tracker {
         );
       }
 
+      // Handle assignee
+      if (update.assignee) {
+        const usersData = await linearQuery<{
+          users: { nodes: Array<{ id: string; displayName: string; name: string }> };
+        }>(
+          `query($filter: UserFilter) {
+            users(filter: $filter) {
+              nodes { id displayName name }
+            }
+          }`,
+          { filter: { displayName: { eq: update.assignee } } },
+        );
+
+        const user = usersData.users.nodes[0];
+        if (user) {
+          await linearQuery(
+            `mutation($id: String!, $assigneeId: String!) {
+              issueUpdate(id: $id, input: { assigneeId: $assigneeId }) {
+                success
+              }
+            }`,
+            { id: issueUuid, assigneeId: user.id },
+          );
+        }
+      }
+
+      // Handle labels
+      if (update.labels && update.labels.length > 0) {
+        const labelsData = await linearQuery<{
+          issueLabels: { nodes: Array<{ id: string; name: string }> };
+        }>(
+          `query($teamId: ID) {
+            issueLabels(filter: { team: { id: { eq: $teamId } } }) {
+              nodes { id name }
+            }
+          }`,
+          { teamId },
+        );
+
+        const labelMap = new Map(labelsData.issueLabels.nodes.map((l) => [l.name, l.id]));
+        const labelIds = update.labels
+          .map((name) => labelMap.get(name))
+          .filter((id): id is string => id !== undefined);
+
+        if (labelIds.length > 0) {
+          await linearQuery(
+            `mutation($id: String!, $labelIds: [String!]!) {
+              issueUpdate(id: $id, input: { labelIds: $labelIds }) {
+                success
+              }
+            }`,
+            { id: issueUuid, labelIds },
+          );
+        }
+      }
+
       // Handle comment
       if (update.comment) {
         await linearQuery(
@@ -507,9 +564,15 @@ function createLinearTracker(): Tracker {
           );
 
           const labelMap = new Map(labelsData.issueLabels.nodes.map((l) => [l.name, l.id]));
-          const labelIds = input.labels
-            .map((name) => labelMap.get(name))
-            .filter((id): id is string => id !== undefined);
+          const appliedLabels: string[] = [];
+          const labelIds: string[] = [];
+          for (const name of input.labels) {
+            const id = labelMap.get(name);
+            if (id) {
+              labelIds.push(id);
+              appliedLabels.push(name);
+            }
+          }
 
           if (labelIds.length > 0) {
             await linearQuery(
@@ -520,8 +583,8 @@ function createLinearTracker(): Tracker {
               }`,
               { id: node.id, labelIds },
             );
-            // Reflect the labels we added
-            issue.labels = input.labels;
+            // Reflect only the labels that actually exist in Linear
+            issue.labels = appliedLabels;
           }
         } catch {
           // Labels are best-effort; don't fail the whole creation

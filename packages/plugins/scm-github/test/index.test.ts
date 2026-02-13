@@ -584,6 +584,16 @@ describe("scm-github plugin", () => {
       expect(result.blockers).toContain("Merge conflicts");
     });
 
+    it("reports UNKNOWN mergeable as noConflicts false", async () => {
+      mockGh({ mergeable: "UNKNOWN", reviewDecision: "APPROVED", mergeStateStatus: "CLEAN", isDraft: false });
+      mockGh([{ name: "build", state: "COMPLETED", conclusion: "SUCCESS" }]);
+
+      const result = await scm.getMergeability(pr);
+      expect(result.noConflicts).toBe(false);
+      expect(result.blockers).toContain("Merge status unknown (GitHub is computing)");
+      expect(result.mergeable).toBe(false);
+    });
+
     it("reports draft status as blocker", async () => {
       mockGh({ mergeable: "MERGEABLE", reviewDecision: "APPROVED", mergeStateStatus: "DRAFT", isDraft: true });
       mockGh([{ name: "build", state: "COMPLETED", conclusion: "SUCCESS" }]);

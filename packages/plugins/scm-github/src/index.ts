@@ -319,7 +319,7 @@ function createGitHubSCM(): SCM {
           `query=query($owner: String!, $name: String!, $number: Int!) {
             repository(owner: $owner, name: $name) {
               pullRequest(number: $number) {
-                reviewThreads(first: 250) {
+                reviewThreads(first: 100) {
                   nodes {
                     isResolved
                     comments(first: 1) {
@@ -492,10 +492,10 @@ function createGitHubSCM(): SCM {
       // Conflicts / merge state
       const mergeable = (data.mergeable ?? "").toUpperCase();
       const mergeState = (data.mergeStateStatus ?? "").toUpperCase();
-      const noConflicts = mergeable !== "CONFLICTING";
-      if (!noConflicts) {
+      const noConflicts = mergeable === "MERGEABLE";
+      if (mergeable === "CONFLICTING") {
         blockers.push("Merge conflicts");
-      } else if (mergeable === "UNKNOWN") {
+      } else if (mergeable === "UNKNOWN" || mergeable === "") {
         blockers.push("Merge status unknown (GitHub is computing)");
       }
       if (mergeState === "BEHIND") {

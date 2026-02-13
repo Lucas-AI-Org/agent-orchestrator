@@ -571,6 +571,47 @@ describe("tracker-linear plugin", () => {
       );
       expect(requestMock).toHaveBeenCalledTimes(4);
     });
+
+    it("updates assignee by resolving display name to ID", async () => {
+      // 1: resolve identifier
+      mockLinearAPI({ issue: { id: "uuid-123", team: { id: "team-1" } } });
+      // 2: user lookup
+      mockLinearAPI({
+        users: { nodes: [{ id: "user-1", displayName: "Alice", name: "Alice Smith" }] },
+      });
+      // 3: issueUpdate (assignee)
+      mockLinearAPI({ issueUpdate: { success: true } });
+
+      await tracker.updateIssue!("INT-123", { assignee: "Alice" }, project);
+      expect(requestMock).toHaveBeenCalledTimes(3);
+
+      const writeCall = requestMock.mock.results[2].value.write.mock.calls[0][0];
+      const body = JSON.parse(writeCall);
+      expect(body.variables.assigneeId).toBe("user-1");
+    });
+
+    it("updates labels by resolving names to IDs", async () => {
+      // 1: resolve identifier
+      mockLinearAPI({ issue: { id: "uuid-123", team: { id: "team-1" } } });
+      // 2: label lookup
+      mockLinearAPI({
+        issueLabels: {
+          nodes: [
+            { id: "label-1", name: "bug" },
+            { id: "label-2", name: "urgent" },
+          ],
+        },
+      });
+      // 3: issueUpdate (labels)
+      mockLinearAPI({ issueUpdate: { success: true } });
+
+      await tracker.updateIssue!("INT-123", { labels: ["bug", "urgent"] }, project);
+      expect(requestMock).toHaveBeenCalledTimes(3);
+
+      const writeCall = requestMock.mock.results[2].value.write.mock.calls[0][0];
+      const body = JSON.parse(writeCall);
+      expect(body.variables.labelIds).toEqual(["label-1", "label-2"]);
+    });
   });
 
   // ---- createIssue -------------------------------------------------------
@@ -679,6 +720,31 @@ describe("tracker-linear plugin", () => {
       const writeCall = requestMock.mock.results[2].value.write.mock.calls[0][0];
       const body = JSON.parse(writeCall);
       expect(body.variables.labelIds).toEqual(["label-1", "label-2"]);
+    });
+
+    it("only reflects actually-applied labels when some don't exist", async () => {
+      mockLinearAPI({
+        issueCreate: {
+          success: true,
+          issue: { ...sampleIssueNode, labels: { nodes: [] } },
+        },
+      });
+      // Only "bug" exists in Linear; "nonexistent" does not
+      mockLinearAPI({
+        issueLabels: {
+          nodes: [
+            { id: "label-1", name: "bug" },
+          ],
+        },
+      });
+      mockLinearAPI({ issueUpdate: { success: true } });
+
+      const issue = await tracker.createIssue!(
+        { title: "Bug", description: "", labels: ["bug", "nonexistent"] },
+        project,
+      );
+      // Should only include the label that was actually found and applied
+      expect(issue.labels).toEqual(["bug"]);
     });
 
     it("throws when teamId is missing from config", async () => {
