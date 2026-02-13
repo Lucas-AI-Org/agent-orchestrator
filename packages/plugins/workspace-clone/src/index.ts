@@ -71,15 +71,26 @@ export function create(config?: Record<string, unknown>): Workspace {
       }
 
       // Clone using --reference for faster clone with shared objects
-      await execFileAsync("git", [
-        "clone",
-        "--reference",
-        repoPath,
-        "--branch",
-        cfg.project.defaultBranch,
-        remoteUrl,
-        clonePath,
-      ]);
+      try {
+        await execFileAsync("git", [
+          "clone",
+          "--reference",
+          repoPath,
+          "--branch",
+          cfg.project.defaultBranch,
+          remoteUrl,
+          clonePath,
+        ]);
+      } catch (cloneErr: unknown) {
+        // Clone failed — clean up any partial directory left on disk
+        if (existsSync(clonePath)) {
+          rmSync(clonePath, { recursive: true, force: true });
+        }
+        const msg = cloneErr instanceof Error ? cloneErr.message : String(cloneErr);
+        throw new Error(`Failed to clone repo for session "${cfg.sessionId}": ${msg}`, {
+          cause: cloneErr,
+        });
+      }
 
       // Create and checkout the feature branch
       try {
