@@ -96,8 +96,12 @@ export function create(): Runtime {
       child.stdout?.on("data", appendOutput);
       child.stderr?.on("data", appendOutput);
 
+      // Register in map BEFORE attaching exit handler — a fast-exiting process
+      // could fire exit before set(), causing delete() to miss and leaving a
+      // stale entry that blocks future create() calls for this sessionId.
+      processes.set(handleId, entry);
+
       // Log exit and auto-remove from map so the sessionId can be reused.
-      // Without this, exited sessions block future create() calls permanently.
       child.once("exit", () => {
         entry.outputBuffer.push(`[process exited with code ${child.exitCode}]`);
         processes.delete(handleId);
@@ -107,8 +111,6 @@ export function create(): Runtime {
       child.on("error", () => {
         // Already captured via exit handler — prevent unhandled error crash
       });
-
-      processes.set(handleId, entry);
 
       return {
         id: handleId,
