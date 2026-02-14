@@ -4,7 +4,7 @@ import { loadConfig, type OrchestratorConfig } from "@agent-orchestrator/core";
 import { tmux, git, gh, getTmuxSessions, getTmuxActivity } from "../lib/shell.js";
 import { getSessionDir, readMetadata, archiveMetadata } from "../lib/metadata.js";
 import { formatAge } from "../lib/format.js";
-import { findProjectForSession } from "../lib/session-utils.js";
+import { findProjectForSession, matchesPrefix } from "../lib/session-utils.js";
 
 async function killSession(
   config: OrchestratorConfig,
@@ -61,7 +61,7 @@ export function registerSession(program: Command): void {
       for (const [projectId, project] of Object.entries(projects)) {
         const prefix = project.sessionPrefix || projectId;
         const sessionDir = getSessionDir(config.dataDir, projectId);
-        const projectSessions = allTmux.filter((s) => s.startsWith(`${prefix}-`));
+        const projectSessions = allTmux.filter((s) => matchesPrefix(s, prefix));
 
         console.log(chalk.bold(`\n${project.name || projectId}:`));
 
@@ -131,7 +131,7 @@ export function registerSession(program: Command): void {
       for (const [projectId, project] of Object.entries(projects)) {
         const prefix = project.sessionPrefix || projectId;
         const sessionDir = getSessionDir(config.dataDir, projectId);
-        const projectSessions = allTmux.filter((s) => s.startsWith(`${prefix}-`));
+        const projectSessions = allTmux.filter((s) => matchesPrefix(s, prefix));
 
         for (const sessionName of projectSessions) {
           const meta = readMetadata(`${sessionDir}/${sessionName}`);

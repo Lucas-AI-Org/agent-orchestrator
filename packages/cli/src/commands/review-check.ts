@@ -4,6 +4,7 @@ import type { Command } from "commander";
 import { loadConfig } from "@agent-orchestrator/core";
 import { exec, gh, getTmuxSessions } from "../lib/shell.js";
 import { getSessionDir, readMetadata } from "../lib/metadata.js";
+import { matchesPrefix } from "../lib/session-utils.js";
 
 interface ReviewInfo {
   session: string;
@@ -56,13 +57,14 @@ export function registerReviewCheck(program: Command): void {
     .option("--dry-run", "Show what would be done without sending messages")
     .action(async (projectId: string | undefined, opts: { dryRun?: boolean }) => {
       const config = loadConfig();
-      const allTmux = await getTmuxSessions();
-      const projects = projectId ? { [projectId]: config.projects[projectId] } : config.projects;
 
       if (projectId && !config.projects[projectId]) {
         console.error(chalk.red(`Unknown project: ${projectId}`));
         process.exit(1);
       }
+
+      const allTmux = await getTmuxSessions();
+      const projects = projectId ? { [projectId]: config.projects[projectId] } : config.projects;
 
       const spinner = ora("Checking PRs for review comments...").start();
       const results: ReviewInfo[] = [];
@@ -70,7 +72,7 @@ export function registerReviewCheck(program: Command): void {
       for (const [pid, project] of Object.entries(projects)) {
         const prefix = project.sessionPrefix || pid;
         const sessionDir = getSessionDir(config.dataDir, pid);
-        const projectSessions = allTmux.filter((s) => s.startsWith(`${prefix}-`));
+        const projectSessions = allTmux.filter((s) => matchesPrefix(s, prefix));
 
         for (const session of projectSessions) {
           const meta = readMetadata(`${sessionDir}/${session}`);

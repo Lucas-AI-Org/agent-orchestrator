@@ -11,6 +11,7 @@ import { git, getTmuxSessions, getTmuxActivity } from "../lib/shell.js";
 import { getSessionDir, readMetadata } from "../lib/metadata.js";
 import { banner, header, formatAge, statusColor } from "../lib/format.js";
 import { getAgent, getAgentByName } from "../lib/plugins.js";
+import { matchesPrefix } from "../lib/session-utils.js";
 
 interface SessionInfo {
   name: string;
@@ -136,15 +137,15 @@ export function registerStatus(program: Command): void {
         return;
       }
 
-      const allTmux = await getTmuxSessions();
-      const projects = opts.project
-        ? { [opts.project]: config.projects[opts.project] }
-        : config.projects;
-
       if (opts.project && !config.projects[opts.project]) {
         console.error(chalk.red(`Unknown project: ${opts.project}`));
         process.exit(1);
       }
+
+      const allTmux = await getTmuxSessions();
+      const projects = opts.project
+        ? { [opts.project]: config.projects[opts.project] }
+        : config.projects;
 
       if (!opts.json) {
         console.log(banner("AGENT ORCHESTRATOR STATUS"));
@@ -157,7 +158,7 @@ export function registerStatus(program: Command): void {
       for (const [projectId, projectConfig] of Object.entries(projects)) {
         const prefix = projectConfig.sessionPrefix || projectId;
         const sessionDir = getSessionDir(config.dataDir, projectId);
-        const projectSessions = allTmux.filter((s) => s.startsWith(`${prefix}-`));
+        const projectSessions = allTmux.filter((s) => matchesPrefix(s, prefix));
 
         // Resolve agent for this project
         const agent = getAgent(config, projectId);

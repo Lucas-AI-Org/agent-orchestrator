@@ -2,6 +2,7 @@ import chalk from "chalk";
 import type { Command } from "commander";
 import { loadConfig } from "@agent-orchestrator/core";
 import { exec, getTmuxSessions } from "../lib/shell.js";
+import { matchesPrefix } from "../lib/session-utils.js";
 
 async function openInTerminal(sessionName: string, newWindow?: boolean): Promise<boolean> {
   try {
@@ -30,14 +31,14 @@ export function registerOpen(program: Command): void {
         // Open all sessions across all projects
         for (const [projectId, project] of Object.entries(config.projects)) {
           const prefix = project.sessionPrefix || projectId;
-          const matching = allTmux.filter((s) => s.startsWith(`${prefix}-`));
+          const matching = allTmux.filter((s) => matchesPrefix(s, prefix));
           sessionsToOpen.push(...matching);
         }
       } else if (config.projects[target]) {
         // Open all sessions for a specific project
         const project = config.projects[target];
         const prefix = project.sessionPrefix || target;
-        sessionsToOpen = allTmux.filter((s) => s.startsWith(`${prefix}-`));
+        sessionsToOpen = allTmux.filter((s) => matchesPrefix(s, prefix));
       } else if (allTmux.includes(target)) {
         // Open a specific session
         sessionsToOpen = [target];
