@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { promisify, setTimeout as sleep } from "node:util";
+import { promisify } from "node:util";
+import { setTimeout as sleep } from "node:timers/promises";
 import { randomUUID } from "node:crypto";
 import { writeFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
