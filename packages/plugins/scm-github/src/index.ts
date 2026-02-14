@@ -223,12 +223,22 @@ function createGitHubSCM(): SCM {
           };
         });
       } catch {
-        return [];
+        // Propagate so callers (getCISummary) can decide how to handle.
+        // Do NOT silently return [] — that causes a fail-open where CI
+        // appears healthy when we simply failed to fetch check status.
+        throw new Error("Failed to fetch CI checks");
       }
     },
 
     async getCISummary(pr: PRInfo): Promise<CIStatus> {
-      const checks = await this.getCIChecks(pr);
+      let checks: CICheck[];
+      try {
+        checks = await this.getCIChecks(pr);
+      } catch {
+        // Fail closed: if we can't fetch CI status, report as failing
+        // rather than "none" (which getMergeability treats as passing).
+        return "failing";
+      }
       if (checks.length === 0) return "none";
 
       const hasFailing = checks.some((c) => c.status === "failed");
@@ -502,6 +512,8 @@ function createGitHubSCM(): SCM {
         blockers.push("Branch is behind base branch");
       } else if (mergeState === "BLOCKED") {
         blockers.push("Merge is blocked by branch protection");
+      } else if (mergeState === "UNSTABLE") {
+        blockers.push("Required checks are failing");
       }
 
       // Draft

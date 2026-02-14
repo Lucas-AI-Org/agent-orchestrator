@@ -264,9 +264,9 @@ describe("scm-github plugin", () => {
       expect(checks[7].status).toBe("pending");
     });
 
-    it("returns empty array on error", async () => {
+    it("throws on error (fail-closed)", async () => {
       mockGhError("no checks");
-      expect(await scm.getCIChecks(pr)).toEqual([]);
+      await expect(scm.getCIChecks(pr)).rejects.toThrow("Failed to fetch CI checks");
     });
 
     it("returns empty array for PR with no checks", async () => {
@@ -315,9 +315,9 @@ describe("scm-github plugin", () => {
       expect(await scm.getCISummary(pr)).toBe("none");
     });
 
-    it('returns "none" on error (getCIChecks returns [])', async () => {
+    it('returns "failing" on error (fail-closed)', async () => {
       mockGhError();
-      expect(await scm.getCISummary(pr)).toBe("none");
+      expect(await scm.getCISummary(pr)).toBe("failing");
     });
 
     it('returns "none" when all checks are skipped', async () => {
@@ -556,6 +556,18 @@ describe("scm-github plugin", () => {
       expect(result.ciPassing).toBe(false);
       expect(result.mergeable).toBe(false);
       expect(result.blockers).toContain("CI is failing");
+      expect(result.blockers).toContain("Required checks are failing");
+    });
+
+    it("reports UNSTABLE merge state even when CI fetch fails", async () => {
+      mockGh({ mergeable: "MERGEABLE", reviewDecision: "APPROVED", mergeStateStatus: "UNSTABLE", isDraft: false });
+      mockGhError("rate limited");
+
+      const result = await scm.getMergeability(pr);
+      expect(result.ciPassing).toBe(false);
+      expect(result.mergeable).toBe(false);
+      expect(result.blockers).toContain("CI is failing");
+      expect(result.blockers).toContain("Required checks are failing");
     });
 
     it("reports changes requested as blockers", async () => {
