@@ -11,26 +11,24 @@ interface TerminalProps {
 
 /**
  * Terminal embed using xterm.js.
- * Streams tmux pane output via SSE. Interactive terminal with direct input.
+ * Proper interactive terminal via WebSocket - type directly, real-time streaming.
  */
 export function Terminal({ sessionId }: TerminalProps) {
   const [fullscreen, setFullscreen] = useState(false);
-  const [isInteractive, setIsInteractive] = useState(false);
+  const [connected, setConnected] = useState(false);
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const lastContentRef = useRef<string>("");
+  const wsRef = useRef<WebSocket | null>(null);
 
   // Initialize xterm.js
   useEffect(() => {
     if (!terminalRef.current) return;
 
-    // Create terminal instance
+    // Create terminal instance - fully interactive
     const term = new XTerm({
       cursorBlink: true,
       cursorStyle: "block",
-      disableStdin: true, // Will be enabled when interactive mode is on
       theme: {
         background: "#000000",
         foreground: "#d0d0d0",
@@ -70,88 +68,84 @@ export function Terminal({ sessionId }: TerminalProps) {
   // Refit terminal when fullscreen changes
   useEffect(() => {
     if (fitAddonRef.current) {
-      setTimeout(() => fitAddonRef.current?.fit(), 150);
+      setTimeout(() => {
+        fitAddonRef.current?.fit();
+        // Send resize to server
+        const term = xtermRef.current;
+        const ws = wsRef.current;
+        if (term && ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(
+            JSON.stringify({
+              type: "resize",
+              cols: term.cols,
+              rows: term.rows,
+            }),
+          );
+        }
+      }, 150);
     }
   }, [fullscreen]);
 
-  // Handle interactive mode
+  // Connect to WebSocket for interactive terminal
   useEffect(() => {
     const term = xtermRef.current;
     if (!term) return;
 
-    if (isInteractive) {
-      term.options.disableStdin = false;
-      term.options.cursorBlink = true;
+    // Connect to WebSocket server
+    const wsUrl = `ws://localhost:${process.env.NEXT_PUBLIC_WS_PORT ?? "3001"}?session=${sessionId}`;
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
 
-      // Handle keyboard input
-      const disposable = term.onData((data) => {
-        // Send each keystroke to the session
-        void (async () => {
-          try {
-            await fetch(`/api/sessions/${sessionId}/send`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ message: data }),
-            });
-          } catch (err) {
-            console.error("[Terminal] Failed to send input:", err);
-          }
-        })();
-      });
+    ws.addEventListener("open", () => {
+      setConnected(true);
+      console.log("[Terminal] WebSocket connected");
 
-      return () => {
-        disposable.dispose();
-      };
-    } else {
-      term.options.disableStdin = true;
-      term.options.cursorBlink = false;
-    }
-  }, [isInteractive, sessionId]);
+      // Send initial terminal size
+      ws.send(
+        JSON.stringify({
+          type: "resize",
+          cols: term.cols,
+          rows: term.rows,
+        }),
+      );
+    });
 
-  // Connect to SSE stream
-  useEffect(() => {
-    const term = xtermRef.current;
-    if (!term) return;
+    ws.addEventListener("message", (event) => {
+      // Write output from server
+      term.write(event.data);
+    });
 
-    const eventSource = new EventSource(`/api/sessions/${sessionId}/terminal`);
-    eventSourceRef.current = eventSource;
+    ws.addEventListener("error", (err) => {
+      console.error("[Terminal] WebSocket error:", err);
+      term.writeln("\r\n\r\n[Connection error]");
+      setConnected(false);
+    });
 
-    eventSource.addEventListener("message", (event) => {
-      try {
-        const data = JSON.parse(event.data) as
-          | { type: "snapshot" | "update"; content: string }
-          | { type: "exit" };
+    ws.addEventListener("close", () => {
+      console.log("[Terminal] WebSocket closed");
+      term.writeln("\r\n\r\n[Connection closed]");
+      setConnected(false);
+    });
 
-        if (data.type === "snapshot" || data.type === "update") {
-          const content = data.content;
-
-          // Only update if content changed
-          if (content !== lastContentRef.current) {
-            lastContentRef.current = content;
-
-            // Reset terminal and write new content
-            term.reset();
-            term.write(content);
-
-            // Scroll to bottom
-            term.scrollToBottom();
-          }
-        } else if (data.type === "exit") {
-          term.writeln("\r\n\r\n[Session exited]");
-        }
-      } catch (err) {
-        console.error("[Terminal] Failed to parse SSE event:", err);
+    // Handle keyboard input - send to server
+    const inputDisposable = term.onData((data) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "input", data }));
       }
     });
 
-    eventSource.addEventListener("error", () => {
-      eventSource.close();
-      term.writeln("\r\n\r\n[Connection lost]");
+    // Handle terminal resize - send to server
+    const resizeDisposable = term.onResize(({ cols, rows }) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "resize", cols, rows }));
+      }
     });
 
     return () => {
-      eventSource.close();
-      eventSourceRef.current = null;
+      inputDisposable.dispose();
+      resizeDisposable.dispose();
+      ws.close();
+      wsRef.current = null;
     };
   }, [sessionId]);
 
@@ -164,15 +158,25 @@ export function Terminal({ sessionId }: TerminalProps) {
     >
       <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] bg-[var(--color-bg-tertiary)] px-3 py-2">
         <div className="flex gap-1.5">
-          <div className="h-2.5 w-2.5 rounded-full bg-[#f85149]" />
+          <div
+            className={cn(
+              "h-2.5 w-2.5 rounded-full transition-colors",
+              connected ? "bg-[#3fb950]" : "bg-[#f85149]",
+            )}
+          />
           <div className="h-2.5 w-2.5 rounded-full bg-[#d29922]" />
-          <div className="h-2.5 w-2.5 rounded-full bg-[#3fb950]" />
+          <div className="h-2.5 w-2.5 rounded-full bg-[#484f58]" />
         </div>
         <span className="font-[var(--font-mono)] text-xs text-[var(--color-text-muted)]">
           {sessionId}
         </span>
-        <span className="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)]">
-          Read-only
+        <span
+          className={cn(
+            "text-[10px] font-medium uppercase tracking-wide",
+            connected ? "text-[var(--color-accent-green)]" : "text-[var(--color-text-muted)]",
+          )}
+        >
+          {connected ? "Interactive" : "Connecting..."}
         </span>
         <button
           onClick={() => setFullscreen(!fullscreen)}
