@@ -11,16 +11,16 @@ interface TerminalProps {
 
 /**
  * Terminal embed using xterm.js.
- * Streams tmux pane output via SSE and optionally allows input.
+ * Streams tmux pane output via SSE. Interactive terminal with direct input.
  */
 export function Terminal({ sessionId }: TerminalProps) {
   const [fullscreen, setFullscreen] = useState(false);
-  const [inputMode, setInputMode] = useState(false);
-  const [inputText, setInputText] = useState("");
+  const [isInteractive, setIsInteractive] = useState(false);
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const lastContentRef = useRef<string>("");
 
   // Initialize xterm.js
   useEffect(() => {
@@ -28,28 +28,35 @@ export function Terminal({ sessionId }: TerminalProps) {
 
     // Create terminal instance
     const term = new XTerm({
-      cursorBlink: false,
-      disableStdin: true, // Read-only by default
+      cursorBlink: true,
+      cursorStyle: "block",
+      disableStdin: true, // Will be enabled when interactive mode is on
       theme: {
         background: "#000000",
         foreground: "#d0d0d0",
-        cursor: "transparent", // Hide cursor in read-only mode
+        cursor: "#d0d0d0",
       },
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       fontSize: 12,
       lineHeight: 1.4,
+      scrollback: 10000,
+      convertEol: true,
     });
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(terminalRef.current);
-    fitAddon.fit();
+
+    // Initial fit
+    setTimeout(() => fitAddon.fit(), 50);
 
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
 
     // Handle window resize
-    const handleResize = () => fitAddon.fit();
+    const handleResize = () => {
+      setTimeout(() => fitAddon.fit(), 50);
+    };
     window.addEventListener("resize", handleResize);
 
     return () => {
@@ -63,10 +70,43 @@ export function Terminal({ sessionId }: TerminalProps) {
   // Refit terminal when fullscreen changes
   useEffect(() => {
     if (fitAddonRef.current) {
-      // Slight delay for DOM to update
-      setTimeout(() => fitAddonRef.current?.fit(), 100);
+      setTimeout(() => fitAddonRef.current?.fit(), 150);
     }
   }, [fullscreen]);
+
+  // Handle interactive mode
+  useEffect(() => {
+    const term = xtermRef.current;
+    if (!term) return;
+
+    if (isInteractive) {
+      term.options.disableStdin = false;
+      term.options.cursorBlink = true;
+
+      // Handle keyboard input
+      const disposable = term.onData((data) => {
+        // Send each keystroke to the session
+        void (async () => {
+          try {
+            await fetch(`/api/sessions/${sessionId}/send`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ message: data }),
+            });
+          } catch (err) {
+            console.error("[Terminal] Failed to send input:", err);
+          }
+        })();
+      });
+
+      return () => {
+        disposable.dispose();
+      };
+    } else {
+      term.options.disableStdin = true;
+      term.options.cursorBlink = false;
+    }
+  }, [isInteractive, sessionId]);
 
   // Connect to SSE stream
   useEffect(() => {
@@ -83,9 +123,19 @@ export function Terminal({ sessionId }: TerminalProps) {
           | { type: "exit" };
 
         if (data.type === "snapshot" || data.type === "update") {
-          // Clear and write full content
-          term.clear();
-          term.write(data.content);
+          const content = data.content;
+
+          // Only update if content changed
+          if (content !== lastContentRef.current) {
+            lastContentRef.current = content;
+
+            // Reset terminal and write new content
+            term.reset();
+            term.write(content);
+
+            // Scroll to bottom
+            term.scrollToBottom();
+          }
         } else if (data.type === "exit") {
           term.writeln("\r\n\r\n[Session exited]");
         }
@@ -105,28 +155,6 @@ export function Terminal({ sessionId }: TerminalProps) {
     };
   }, [sessionId]);
 
-  // Send input to session
-  const handleSendInput = async () => {
-    if (!inputText.trim()) return;
-
-    try {
-      const response = await fetch(`/api/sessions/${sessionId}/send`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: inputText }),
-      });
-
-      if (!response.ok) {
-        const err = (await response.json()) as { error?: string };
-        console.error("[Terminal] Failed to send input:", err.error);
-      } else {
-        setInputText("");
-      }
-    } catch (err) {
-      console.error("[Terminal] Failed to send input:", err);
-    }
-  };
-
   return (
     <div
       className={cn(
@@ -143,46 +171,23 @@ export function Terminal({ sessionId }: TerminalProps) {
         <span className="font-[var(--font-mono)] text-xs text-[var(--color-text-muted)]">
           {sessionId}
         </span>
-        <button
-          onClick={() => setInputMode(!inputMode)}
-          className="ml-auto rounded px-2 py-0.5 text-[11px] text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-secondary)] hover:text-[var(--color-text-primary)]"
-        >
-          {inputMode ? "read-only" : "input"}
-        </button>
+        <span className="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)]">
+          Read-only
+        </span>
         <button
           onClick={() => setFullscreen(!fullscreen)}
-          className="rounded px-2 py-0.5 text-[11px] text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-secondary)] hover:text-[var(--color-text-primary)]"
+          className="ml-auto rounded px-2 py-0.5 text-[11px] text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-secondary)] hover:text-[var(--color-text-primary)]"
         >
           {fullscreen ? "exit fullscreen" : "fullscreen"}
         </button>
       </div>
       <div
         ref={terminalRef}
-        className={cn(fullscreen ? "h-[calc(100vh-36px)]" : "h-96")}
+        className={cn(
+          "p-2",
+          fullscreen ? "h-[calc(100vh-40px)]" : "h-[600px]",
+        )}
       />
-      {inputMode && (
-        <div className="flex gap-2 border-t border-[var(--color-border-default)] bg-[var(--color-bg-tertiary)] p-2">
-          <input
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                void handleSendInput();
-              }
-            }}
-            placeholder="Send message to agent..."
-            className="flex-1 rounded border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-2 py-1 text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--color-accent-blue)]"
-          />
-          <button
-            onClick={() => void handleSendInput()}
-            disabled={!inputText.trim()}
-            className="rounded bg-[var(--color-accent-blue)] px-3 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            Send
-          </button>
-        </div>
-      )}
     </div>
   );
 }
