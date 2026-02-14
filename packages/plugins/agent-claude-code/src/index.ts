@@ -43,12 +43,12 @@ input=$(cat)
 if command -v jq &>/dev/null; then
   tool_name=$(echo "$input" | jq -r '.tool_name // empty')
   command=$(echo "$input" | jq -r '.tool_input.command // empty')
-  output=$(echo "$input" | jq -r '.tool_output // empty')
+  output=$(echo "$input" | jq -r '.tool_response // empty')
 else
   # Fallback: basic JSON parsing without jq
-  tool_name=$(echo "$input" | grep -o '"tool_name"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*:"\\([^"]*\\)".*/\\1/' || echo "")
-  command=$(echo "$input" | grep -o '"command"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*:"\\([^"]*\\)".*/\\1/' || echo "")
-  output=$(echo "$input" | grep -o '"tool_output"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*:"\\([^"]*\\)".*/\\1/' || echo "")
+  tool_name=$(echo "$input" | grep -o '"tool_name"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4 || echo "")
+  command=$(echo "$input" | grep -o '"command"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4 || echo "")
+  output=$(echo "$input" | grep -o '"tool_response"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4 || echo "")
 fi
 
 # Only process Bash tool calls
