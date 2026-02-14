@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getServices } from "@/lib/services";
+import { stripControlChars } from "@/lib/validation";
 import type { Runtime } from "@agent-orchestrator/core";
 
 export async function POST(
@@ -8,10 +9,20 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const { message } = await request.json() as { message: string };
+    const { message: rawMessage } = await request.json() as { message: string };
 
-    if (!message) {
+    if (!rawMessage) {
       return NextResponse.json({ error: "Missing message" }, { status: 400 });
+    }
+
+    // Strip control characters to prevent injection when passed to shell-based runtimes
+    const message = stripControlChars(rawMessage);
+
+    if (message.trim().length === 0) {
+      return NextResponse.json(
+        { error: "Message must not be empty after sanitization" },
+        { status: 400 },
+      );
     }
 
     const { sessionManager, config, registry } = await getServices();
@@ -31,11 +42,13 @@ export async function POST(
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
 
-    if (!project.runtime) {
+    // Use project runtime or fall back to defaults
+    const runtimeName = project.runtime ?? config.defaults?.runtime;
+    if (!runtimeName) {
       return NextResponse.json({ error: "Project has no runtime configured" }, { status: 500 });
     }
 
-    const runtime = registry.get<Runtime>("runtime", project.runtime);
+    const runtime = registry.get<Runtime>("runtime", runtimeName);
     if (!runtime) {
       return NextResponse.json({ error: "Runtime plugin not found" }, { status: 500 });
     }
