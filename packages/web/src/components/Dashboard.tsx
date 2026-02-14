@@ -87,7 +87,7 @@ export function Dashboard({ sessions, stats }: DashboardProps) {
         </h1>
         <div className="flex items-baseline gap-4">
           <a
-            href="/sessions/oa-orchestrator"
+            href="/sessions/orchestrator"
             className="rounded-md border border-[var(--color-border-default)] px-3 py-1 text-[11px] text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-accent-blue)] hover:text-[var(--color-accent-blue)]"
           >
             orchestrator terminal
