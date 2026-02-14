@@ -4,10 +4,9 @@ import { useState, useEffect } from "react";
 import {
   type DashboardSession,
   type DashboardPR,
-  type DashboardCICheck,
   getAttentionLevel,
 } from "@/lib/types";
-import { checkStatusIcon, ciCheckSortOrder } from "./CIBadge";
+import { CICheckList } from "./CIBadge";
 import { Terminal } from "./Terminal";
 
 interface SessionDetailProps {
@@ -308,7 +307,7 @@ function PRCard({ pr }: { pr: DashboardPR }) {
         {/* CI Checks — inline row */}
         {pr.ciChecks.length > 0 && (
           <div className="mt-3 border-t border-[var(--color-border-muted)] pt-3">
-            <InlineCIChecks checks={pr.ciChecks} expandFailures={hasFailures} />
+            <CICheckList checks={pr.ciChecks} layout={hasFailures ? "expanded" : "inline"} />
           </div>
         )}
 
@@ -438,75 +437,6 @@ function IssuesList({ pr }: { pr: DashboardPR }) {
           <span className="text-[var(--color-text-secondary)]">{issue.text}</span>
         </div>
       ))}
-    </div>
-  );
-}
-
-// ── Inline CI Checks ─────────────────────────────────────────────────
-
-function InlineCIChecks({
-  checks,
-  expandFailures,
-}: {
-  checks: DashboardCICheck[];
-  expandFailures: boolean;
-}) {
-  const sorted = [...checks].sort((a, b) => ciCheckSortOrder[a.status] - ciCheckSortOrder[b.status]);
-
-  return (
-    <div className={expandFailures ? "space-y-1" : "flex flex-wrap items-center gap-x-3 gap-y-1"}>
-      {sorted.map((check) => {
-        const { icon, color } = checkStatusIcon[check.status];
-        const inner = (
-          <span className="inline-flex items-center gap-1 text-xs">
-            <span style={{ color }}>{icon}</span>
-            <span className="text-[var(--color-text-secondary)]">{check.name}</span>
-          </span>
-        );
-
-        if (expandFailures) {
-          return (
-            <div key={check.name} className="flex items-center gap-2">
-              {check.url ? (
-                <a
-                  href={check.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:no-underline"
-                >
-                  {inner}
-                </a>
-              ) : (
-                inner
-              )}
-              {check.url && (
-                <a
-                  href={check.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[11px] text-[var(--color-accent-blue)] hover:underline"
-                >
-                  view
-                </a>
-              )}
-            </div>
-          );
-        }
-
-        return check.url ? (
-          <a
-            key={check.name}
-            href={check.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:no-underline"
-          >
-            {inner}
-          </a>
-        ) : (
-          <span key={check.name}>{inner}</span>
-        );
-      })}
     </div>
   );
 }

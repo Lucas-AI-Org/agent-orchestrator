@@ -56,6 +56,8 @@ export function CIBadge({ status, checks, compact }: CIBadgeProps) {
 
 interface CICheckListProps {
   checks: DashboardCICheck[];
+  /** "vertical" (default): stacked list. "inline": horizontal wrap. "expanded": stacked with linked names. */
+  layout?: "vertical" | "inline" | "expanded";
 }
 
 export const checkStatusIcon: Record<DashboardCICheck["status"], { icon: string; color: string }> = {
@@ -75,8 +77,74 @@ export const ciCheckSortOrder: Record<DashboardCICheck["status"], number> = {
   skipped: 4,
 };
 
-export function CICheckList({ checks }: CICheckListProps) {
+export function CICheckList({ checks, layout = "vertical" }: CICheckListProps) {
   const sorted = [...checks].sort((a, b) => ciCheckSortOrder[a.status] - ciCheckSortOrder[b.status]);
+
+  if (layout === "inline") {
+    return (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        {sorted.map((check) => {
+          const { icon, color } = checkStatusIcon[check.status];
+          const inner = (
+            <span className="inline-flex items-center gap-1 text-xs">
+              <span style={{ color }}>{icon}</span>
+              <span className="text-[var(--color-text-secondary)]">{check.name}</span>
+            </span>
+          );
+          return check.url ? (
+            <a
+              key={check.name}
+              href={check.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:no-underline"
+            >
+              {inner}
+            </a>
+          ) : (
+            <span key={check.name}>{inner}</span>
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (layout === "expanded") {
+    return (
+      <div className="space-y-1">
+        {sorted.map((check) => {
+          const { icon, color } = checkStatusIcon[check.status];
+          const inner = (
+            <span className="inline-flex items-center gap-1 text-xs">
+              <span style={{ color }}>{icon}</span>
+              <span className="text-[var(--color-text-secondary)]">{check.name}</span>
+            </span>
+          );
+          return (
+            <div key={check.name} className="flex items-center gap-2">
+              {check.url ? (
+                <a href={check.url} target="_blank" rel="noopener noreferrer" className="hover:no-underline">
+                  {inner}
+                </a>
+              ) : (
+                inner
+              )}
+              {check.url && (
+                <a
+                  href={check.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-[var(--color-accent-blue)] hover:underline"
+                >
+                  view
+                </a>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-1">
