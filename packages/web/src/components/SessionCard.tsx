@@ -58,7 +58,8 @@ export function SessionCard({ session, onSend, onKill, onMerge, onRestore }: Ses
     session.status === "cleanup" ||
     session.status === "terminated" ||
     session.status === "done" ||
-    session.status === "merged";
+    session.status === "merged" ||
+    session.activity === "exited";
   const isRestorable = isTerminal && session.status !== "merged";
 
   return (
