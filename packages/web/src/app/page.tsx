@@ -45,7 +45,11 @@ export default async function Home() {
       // Apply cached data if available (for both terminal and non-terminal sessions)
       if (cached) {
         if (sessions[i].pr) {
+          // Apply ALL cached fields (not just some)
           sessions[i].pr.state = cached.state;
+          sessions[i].pr.title = cached.title;
+          sessions[i].pr.additions = cached.additions;
+          sessions[i].pr.deletions = cached.deletions;
           sessions[i].pr.ciStatus = cached.ciStatus as "none" | "pending" | "passing" | "failing";
           sessions[i].pr.reviewDecision = cached.reviewDecision as
             | "none"
@@ -62,7 +66,8 @@ export default async function Home() {
           sessions[i].pr.unresolvedComments = cached.unresolvedComments;
         }
 
-        // Skip enrichment for terminal sessions or merged/closed PRs (data already applied from cache)
+        // Skip enrichment if cache is fresh AND (terminal OR merged/closed)
+        // This allows terminal sessions to be enriched once when cache is missing/expired
         if (
           terminalStatuses.has(core.status) ||
           cached.state === "merged" ||
@@ -70,12 +75,6 @@ export default async function Home() {
         ) {
           return Promise.resolve();
         }
-      }
-
-      // Skip enrichment for terminal sessions with no cache
-      // (they won't have PR data to enrich anyway)
-      if (terminalStatuses.has(core.status)) {
-        return Promise.resolve();
       }
 
       let project = config.projects[core.projectId];
