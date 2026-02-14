@@ -379,6 +379,14 @@ describe("detectActivity", () => {
     expect(agent.detectActivity("Thinking...\nSearching codebase...\n$ ")).toBe("idle");
   });
 
+  it("returns waiting_input when permission prompt follows historical activity", () => {
+    // Permission prompt at the bottom should NOT be overridden by historical
+    // "Reading"/"Thinking" output higher in the buffer.
+    expect(agent.detectActivity("Reading file src/index.ts\nThinking...\nDo you want to proceed?\n")).toBe("waiting_input");
+    expect(agent.detectActivity("Searching codebase...\n(Y)es / (N)o\n")).toBe("waiting_input");
+    expect(agent.detectActivity("Writing to out.ts\nbypass all future permissions for this session\n")).toBe("waiting_input");
+  });
+
   it("returns active for non-empty output with no special patterns", () => {
     expect(agent.detectActivity("some random terminal output\n")).toBe("active");
   });

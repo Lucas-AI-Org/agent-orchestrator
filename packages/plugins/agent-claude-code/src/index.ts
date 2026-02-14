@@ -336,14 +336,17 @@ function classifyTerminalOutput(terminalOutput: string): ActivityState {
   // The ❯ is Claude Code's prompt character.
   if (/^[❯>$#]\s*$/.test(lastLine)) return "idle";
 
+  // Check the bottom of the buffer for permission prompts BEFORE checking
+  // full-buffer active indicators. Historical "Thinking"/"Reading" text in
+  // the buffer must not override a current permission prompt at the bottom.
+  const tail = lines.slice(-5).join("\n");
+  if (/Do you want to proceed\?/i.test(tail)) return "waiting_input";
+  if (/\(Y\)es.*\(N\)o/i.test(tail)) return "waiting_input";
+  if (/bypass.*permissions/i.test(tail)) return "waiting_input";
+
   // Active indicators — Claude is processing
   if (terminalOutput.includes("esc to interrupt")) return "active";
   if (/Thinking|Reading|Writing|Searching/i.test(terminalOutput)) return "active";
-
-  // Waiting for user input — permission prompts
-  if (/Do you want to proceed\?/i.test(terminalOutput)) return "waiting_input";
-  if (/\(Y\)es.*\(N\)o/i.test(terminalOutput)) return "waiting_input";
-  if (/bypass.*permissions/i.test(terminalOutput)) return "waiting_input";
 
   // Queued message indicator
   if (terminalOutput.includes("Press up to edit queued messages")) return "active";

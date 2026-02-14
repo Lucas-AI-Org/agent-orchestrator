@@ -309,6 +309,31 @@ describe("check (single session)", () => {
     expect(lm.getStates().get("app-1")).toBe("needs_input");
   });
 
+  it("preserves stuck state when getOutput throws", async () => {
+    vi.mocked(mockRuntime.getOutput).mockRejectedValue(new Error("tmux error"));
+
+    const session = makeSession({ status: "stuck" });
+    vi.mocked(mockSessionManager.get).mockResolvedValue(session);
+
+    writeMetadata(dataDir, "app-1", {
+      worktree: "/tmp",
+      branch: "main",
+      status: "stuck",
+      project: "my-app",
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: mockRegistry,
+      sessionManager: mockSessionManager,
+    });
+
+    await lm.check("app-1");
+
+    // getOutput failure should hit the catch block and preserve "stuck"
+    expect(lm.getStates().get("app-1")).toBe("stuck");
+  });
+
   it("detects PR states from SCM", async () => {
     const mockSCM: SCM = {
       name: "mock-scm",
