@@ -49,7 +49,7 @@ async function safeResponseText(response: Response): Promise<string> {
 
 async function postWithRetry(
   url: string,
-  body: { message: string },
+  body: Record<string, unknown>,
   token: string,
   retries: number,
   retryDelayMs: number,
@@ -122,13 +122,13 @@ function formatMessage(event: OrchestratorEvent): string {
 }
 
 function buildUrl(host: string, port: number): string {
-  return `http://${host}:${port}/api/sessions/main/message`;
+  return `http://${host}:${port}/hooks/wake`;
 }
 
 export function create(config?: Record<string, unknown>): Notifier {
   const host = (config?.host as string | undefined) ?? "localhost";
   const port = (config?.port as number | undefined) ?? 8080;
-  const token = config?.token as string | undefined;
+  const hookToken = (config?.hookToken as string | undefined) ?? (config?.token as string | undefined);
   const rawRetries = (config?.retries as number) ?? 2;
   const rawDelay = (config?.retryDelayMs as number) ?? 1000;
   const retries = Number.isFinite(rawRetries) ? Math.max(0, rawRetries) : 2;
@@ -141,8 +141,8 @@ export function create(config?: Record<string, unknown>): Notifier {
       ? new Set(rawEvents)
       : DEFAULT_EVENTS;
 
-  if (!token) {
-    console.warn("[notifier-openclaw] No token configured — notifications will be no-ops");
+  if (!hookToken) {
+    console.warn("[notifier-openclaw] No hookToken configured — notifications will be no-ops");
   }
 
   const url = buildUrl(host, port);
@@ -151,11 +151,11 @@ export function create(config?: Record<string, unknown>): Notifier {
     name: "openclaw",
 
     async notify(event: OrchestratorEvent): Promise<void> {
-      if (!token) return;
+      if (!hookToken) return;
       if (!allowedEvents.has(event.type)) return;
 
-      const message = formatMessage(event);
-      await postWithRetry(url, { message }, token, retries, retryDelayMs);
+      const text = formatMessage(event);
+      await postWithRetry(url, { text, mode: "now" }, hookToken, retries, retryDelayMs);
     },
   };
 }
