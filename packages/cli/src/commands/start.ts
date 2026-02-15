@@ -291,10 +291,19 @@ export function registerStart(program: Command): void {
             }
           }
 
-          // Print summary
-          console.log(chalk.bold.green("\n✓ Orchestrator started\n"));
-          console.log(chalk.cyan("Dashboard:"), `http://localhost:${port}`);
-          console.log(chalk.cyan("Session:"), `tmux attach -t ${sessionId}`);
+          // Print summary based on what was actually started
+          console.log(chalk.bold.green("\n✓ Startup complete\n"));
+
+          if (opts?.dashboard !== false) {
+            console.log(chalk.cyan("Dashboard:"), `http://localhost:${port}`);
+          }
+
+          if (opts?.orchestrator !== false && !exists) {
+            console.log(chalk.cyan("Orchestrator:"), `tmux attach -t ${sessionId}`);
+          } else if (exists) {
+            console.log(chalk.cyan("Orchestrator:"), `already running (${sessionId})`);
+          }
+
           console.log(chalk.dim(`Config: ${config.dataDir}\n`));
 
           // Keep dashboard process alive if it was started

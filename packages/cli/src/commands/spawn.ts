@@ -147,6 +147,8 @@ async function spawnSession(
       "-e",
       `AO_SESSION=${sessionName}`,
       "-e",
+      `AO_PROJECT_ID=${projectId}`,
+      "-e",
       `AO_DATA_DIR=${config.dataDir}`,
       "-e",
       "DIRENV_LOG_FORMAT=",
