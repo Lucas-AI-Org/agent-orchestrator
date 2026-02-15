@@ -183,7 +183,8 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
           try {
             session.activity = await plugins.agent.getActivityState(session);
           } catch {
-            // Can't detect activity — leave as idle
+            // Can't detect activity — explicitly set to idle
+            session.activity = "idle";
           }
         }
       } catch {

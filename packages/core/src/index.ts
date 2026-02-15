@@ -49,4 +49,10 @@ export { buildPrompt, BASE_AGENT_PROMPT } from "./prompt-builder.js";
 export type { PromptBuildConfig } from "./prompt-builder.js";
 
 // Shared utilities
-export { shellEscape, escapeAppleScript, validateUrl } from "./utils.js";
+export {
+  shellEscape,
+  escapeAppleScript,
+  validateUrl,
+  readLastJsonlEntry,
+  TAIL_READ_BYTES,
+} from "./utils.js";

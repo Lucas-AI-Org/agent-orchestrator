@@ -1,5 +1,7 @@
 import {
   shellEscape,
+  readLastJsonlEntry,
+  TAIL_READ_BYTES,
   type Agent,
   type AgentSessionInfo,
   type AgentLaunchConfig,
@@ -10,7 +12,7 @@ import {
   type Session,
 } from "@composio/ao-core";
 import { execFile } from "node:child_process";
-import { open, readdir, readFile, stat, writeFile, mkdir, chmod } from "node:fs/promises";
+import { readdir, readFile, stat, writeFile, mkdir, chmod } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
@@ -243,51 +245,8 @@ interface JsonlLine {
  * Read only the last chunk of a JSONL file to extract the last entry's type
  * and the file's modification time. This is optimized for polling — it avoids
  * reading the entire file (which `getSessionInfo()` does for full cost/summary).
+ * Now uses the shared readLastJsonlEntry utility from @composio/ao-core.
  */
-const TAIL_READ_BYTES = 4096;
-
-async function readLastJsonlEntry(
-  filePath: string,
-): Promise<{ lastType: string | null; modifiedAt: Date } | null> {
-  let fh;
-  try {
-    fh = await open(filePath, "r");
-    const fileStat = await fh.stat();
-    const size = fileStat.size;
-    if (size === 0) return null;
-
-    const readSize = Math.min(TAIL_READ_BYTES, size);
-    const buffer = Buffer.alloc(readSize);
-    const { bytesRead } = await fh.read(buffer, 0, readSize, size - readSize);
-
-    const chunk = buffer.toString("utf-8", 0, bytesRead);
-    // Walk backwards through lines to find the last valid JSON object with a type
-    const lines = chunk.split("\n");
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i];
-      if (!line) continue;
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      try {
-        const parsed: unknown = JSON.parse(trimmed);
-        if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-          const obj = parsed as Record<string, unknown>;
-          if (typeof obj.type === "string") {
-            return { lastType: obj.type, modifiedAt: fileStat.mtime };
-          }
-        }
-      } catch {
-        // Skip malformed lines (possibly truncated first line in our chunk)
-      }
-    }
-
-    return { lastType: null, modifiedAt: fileStat.mtime };
-  } catch {
-    return null;
-  } finally {
-    await fh?.close();
-  }
-}
 
 /** Parse JSONL file into lines (skipping invalid JSON) */
 async function parseJsonlFile(filePath: string): Promise<JsonlLine[]> {

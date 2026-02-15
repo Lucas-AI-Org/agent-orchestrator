@@ -1,5 +1,6 @@
 import {
   shellEscape,
+  readLastJsonlEntry,
   type Agent,
   type AgentSessionInfo,
   type AgentLaunchConfig,
@@ -10,14 +11,11 @@ import {
 } from "@composio/ao-core";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { readdir, stat, open } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 const execFileAsync = promisify(execFile);
-
-// Read only the last 4KB to find the last JSONL entry (avoid loading entire file)
-const TAIL_READ_BYTES = 4096;
 
 // =============================================================================
 // Codex Session File Helpers
@@ -26,11 +24,15 @@ const TAIL_READ_BYTES = 4096;
 /**
  * Find the latest rollout-*.jsonl file in Codex session directory.
  * Codex stores session files at ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl
+ *
+ * Note: Codex uses its own internal session IDs (UUIDs) unrelated to orchestrator
+ * session IDs, so we just find the most recent rollout file across all dates.
  */
-async function findLatestRolloutFile(sessionId: string): Promise<string | null> {
+async function findLatestRolloutFile(): Promise<string | null> {
   try {
     const codexDir = join(homedir(), ".codex", "sessions");
     const now = new Date();
+    let mostRecentFile: { path: string; mtime: Date } | null = null;
 
     // Try current date and previous 7 days
     for (let daysAgo = 0; daysAgo < 7; daysAgo++) {
@@ -45,20 +47,18 @@ async function findLatestRolloutFile(sessionId: string): Promise<string | null> 
 
       try {
         const files = await readdir(dayDir);
-        const rolloutFiles = files
-          .filter((f) => f.startsWith("rollout-") && f.endsWith(".jsonl"))
-          .filter((f) => f.includes(sessionId) || sessionId.startsWith(f.slice(8, -6)));
+        const rolloutFiles = files.filter(
+          (f) => f.startsWith("rollout-") && f.endsWith(".jsonl"),
+        );
 
-        if (rolloutFiles.length > 0) {
-          // Get the most recent by mtime
-          const fileStats = await Promise.all(
-            rolloutFiles.map(async (f) => ({
-              name: f,
-              mtime: (await stat(join(dayDir, f))).mtime,
-            })),
-          );
-          fileStats.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
-          return join(dayDir, fileStats[0].name);
+        // Check all rollout files in this directory
+        for (const file of rolloutFiles) {
+          const filePath = join(dayDir, file);
+          const stats = await stat(filePath);
+
+          if (!mostRecentFile || stats.mtime > mostRecentFile.mtime) {
+            mostRecentFile = { path: filePath, mtime: stats.mtime };
+          }
         }
       } catch {
         // Directory doesn't exist, try next date
@@ -66,57 +66,9 @@ async function findLatestRolloutFile(sessionId: string): Promise<string | null> 
       }
     }
 
-    return null;
+    return mostRecentFile?.path ?? null;
   } catch {
     return null;
-  }
-}
-
-/**
- * Read the last entry from a JSONL file and return type + mtime.
- * Only reads the last 4KB to avoid loading entire file into memory.
- */
-async function readLastJsonlEntry(
-  filePath: string,
-): Promise<{ lastType: string; modifiedAt: Date } | null> {
-  let fh;
-  try {
-    fh = await open(filePath, "r");
-    const fileStat = await fh.stat();
-    const size = fileStat.size;
-    if (size === 0) return null;
-
-    // Read only the last TAIL_READ_BYTES (4KB) from the file
-    const readSize = Math.min(TAIL_READ_BYTES, size);
-    const buffer = Buffer.alloc(readSize);
-    const { bytesRead } = await fh.read(buffer, 0, readSize, size - readSize);
-
-    const chunk = buffer.toString("utf-8", 0, bytesRead);
-    // Walk backwards through lines to find the last valid JSON object with a type
-    const lines = chunk.split("\n");
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i];
-      if (!line) continue;
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      try {
-        const parsed: unknown = JSON.parse(trimmed);
-        if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-          const obj = parsed as Record<string, unknown>;
-          if (typeof obj.type === "string") {
-            return { lastType: obj.type, modifiedAt: fileStat.mtime };
-          }
-        }
-      } catch {
-        // Skip malformed lines (possibly truncated first line in our chunk)
-      }
-    }
-
-    return { lastType: "unknown", modifiedAt: fileStat.mtime };
-  } catch {
-    return null;
-  } finally {
-    await fh?.close();
   }
 }
 
@@ -183,7 +135,7 @@ function createCodexAgent(): Agent {
       if (!running) return "exited";
 
       // Process is running - check JSONL rollout file for activity
-      const rolloutFile = await findLatestRolloutFile(session.id);
+      const rolloutFile = await findLatestRolloutFile();
       if (!rolloutFile) {
         // No session file found, but process is running - assume active
         return "active";
