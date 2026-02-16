@@ -22,10 +22,9 @@
 
 **Issue**: OpenClaw notifier token found in git history
 
-- **Token**: `1af5c4fb9e07dc5e69a20de02bbea653f17c110089b68872`
+- **Token**: `1af5c4f...872` (redacted - visible in commit history)
 - **File**: `agent-orchestrator.yaml`
 - **Commit**: `0393ab70a83e090883895d2168aa39a76f997ec8`
-- **Author**: samvit@hotmail.com
 - **Date**: 2026-02-15
 - **Status**: Token already removed from current code, still in git history
 

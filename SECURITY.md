@@ -28,7 +28,7 @@ Please include the following information:
 **Date**: 2026-02-15
 **Commit**: 0393ab70a83e090883895d2168aa39a76f997ec8
 
-An OpenClaw notifier token (`1af5c4fb9e07dc5e69a20de02bbea653f17c110089b68872`) was accidentally committed in `agent-orchestrator.yaml` and later removed. This token was:
+An OpenClaw notifier token (`1af5c4f...872` - redacted) was accidentally committed in `agent-orchestrator.yaml` and later removed. This token was:
 
 - Used for local development/testing only
 - Never used in production

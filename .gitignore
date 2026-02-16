@@ -50,11 +50,6 @@ id_ecdsa
 id_ed25519
 *.ppk
 
-# Database
-*.sqlite
-*.db
-*.sql
-
 # Development symlinks (created per-worktree, not committed)
 .claude
 packages/web/agent-orchestrator.yaml
