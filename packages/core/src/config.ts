@@ -357,8 +357,9 @@ export function findConfig(startDir?: string): string | null {
 
 /** Load and validate config from a YAML file */
 export function loadConfig(configPath?: string): OrchestratorConfig {
-  // Priority: 1. Explicit param, 2. AO_CONFIG_PATH env var, 3. Search default locations
-  const path = configPath ?? process.env["AO_CONFIG_PATH"] ?? findConfigFile();
+  // Priority: 1. Explicit param, 2. Search (including AO_CONFIG_PATH env var)
+  // findConfigFile handles AO_CONFIG_PATH validation, so delegate to it
+  const path = configPath ?? findConfigFile();
 
   if (!path) {
     throw new Error("No agent-orchestrator.yaml found. Run `ao init` to create one.");

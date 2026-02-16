@@ -3,6 +3,10 @@
 
 set -e
 
+# Find the repo root (where this script is located) BEFORE changing directories
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$SCRIPT_DIR"
+
 echo "🧪 Testing config discovery fix..."
 echo ""
 
@@ -12,6 +16,7 @@ mkdir -p "$TEST_DIR"
 cd "$TEST_DIR"
 
 echo "📁 Test directory: $TEST_DIR"
+echo "📦 Repo root: $REPO_ROOT"
 echo ""
 
 # Create a config file in the test directory
@@ -39,7 +44,7 @@ echo ""
 # Test 1: Verify findConfigFile works
 echo "Test 1: findConfigFile should find config in current directory"
 node -e "
-  const { findConfigFile } = require('$(realpath ~/.worktrees/ao/ao/ao-38)/packages/core/dist/index.js');
+  const { findConfigFile } = require('$REPO_ROOT/packages/core/dist/index.js');
   process.chdir('$TEST_DIR');
   const found = findConfigFile();
   if (!found) {
@@ -57,7 +62,7 @@ echo ""
 # Test 2: Verify AO_CONFIG_PATH env var works
 echo "Test 2: AO_CONFIG_PATH environment variable should override default search"
 AO_CONFIG_PATH="$TEST_DIR/agent-orchestrator.yaml" node -e "
-  const { findConfigFile } = require('$(realpath ~/.worktrees/ao/ao/ao-38)/packages/core/dist/index.js');
+  const { findConfigFile } = require('$REPO_ROOT/packages/core/dist/index.js');
   const found = findConfigFile();
   if (!found) {
     console.error('❌ FAIL: findConfigFile returned null');
@@ -74,7 +79,7 @@ echo ""
 # Test 3: Verify loadConfig uses AO_CONFIG_PATH
 echo "Test 3: loadConfig should load from AO_CONFIG_PATH"
 AO_CONFIG_PATH="$TEST_DIR/agent-orchestrator.yaml" node -e "
-  const { loadConfig } = require('$(realpath ~/.worktrees/ao/ao/ao-38)/packages/core/dist/index.js');
+  const { loadConfig } = require('$REPO_ROOT/packages/core/dist/index.js');
   const config = loadConfig();
   if (config.port !== 4567) {
     console.error('❌ FAIL: Wrong config loaded. Port:', config.port);
