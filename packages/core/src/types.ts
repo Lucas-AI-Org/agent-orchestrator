@@ -16,6 +16,55 @@
  */
 
 // =============================================================================
+// RATE LIMITING
+// =============================================================================
+
+/**
+ * Rate limit information from a plugin.
+ * Plugins that interact with external APIs can implement getRateLimitStatus()
+ * to expose remaining quota and reset times.
+ */
+export interface RateLimitInfo {
+  /** Quota name (e.g., "graphql", "rest", "search", "core") */
+  resource: string;
+  /** Remaining calls before limit */
+  remaining: number;
+  /** Total limit */
+  limit: number;
+  /** When the limit resets (UTC) */
+  resetAt: Date;
+  /** Whether currently rate limited (remaining === 0) */
+  isLimited: boolean;
+}
+
+/**
+ * Standardized error thrown when a plugin hits a rate limit.
+ * Contains structured data for UX to show reset time and retry guidance.
+ */
+export class RateLimitError extends Error {
+  readonly code = "RATE_LIMIT_EXCEEDED" as const;
+  readonly resource: string;
+  readonly resetAt: Date;
+  readonly retryAfter: number; // seconds until reset
+
+  constructor(resource: string, resetAt: Date, options?: { cause?: Error }) {
+    const retryAfter = Math.max(0, Math.ceil((resetAt.getTime() - Date.now()) / 1000));
+    const resetTime = resetAt.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    super(
+      `Rate limit exceeded for ${resource}. Resets at ${resetTime} (in ${Math.ceil(retryAfter / 60)} minutes)`,
+      options,
+    );
+    this.name = "RateLimitError";
+    this.resource = resource;
+    this.resetAt = resetAt;
+    this.retryAfter = retryAfter;
+  }
+}
+
+// =============================================================================
 // SESSION
 // =============================================================================
 
@@ -377,6 +426,9 @@ export interface Tracker {
 
   /** Optional: create a new issue */
   createIssue?(input: CreateIssueInput, project: ProjectConfig): Promise<Issue>;
+
+  /** Optional: get current rate limit status */
+  getRateLimitStatus?(): Promise<RateLimitInfo[]>;
 }
 
 export interface Issue {
@@ -471,6 +523,11 @@ export interface SCM {
 
   /** Check if PR is ready to merge */
   getMergeability(pr: PRInfo): Promise<MergeReadiness>;
+
+  // --- Rate Limiting ---
+
+  /** Get current rate limit status (optional, for plugins that track quotas) */
+  getRateLimitStatus?(): Promise<RateLimitInfo[]>;
 }
 
 // --- PR Types ---
