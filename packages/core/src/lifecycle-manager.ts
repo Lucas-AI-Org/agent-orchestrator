@@ -186,9 +186,10 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
   /** Get merged reaction config (project overrides + global defaults). */
   function getReactionConfig(
     reactionKey: string,
-    project: ProjectConfig,
+    project: ProjectConfig | undefined,
   ): ReactionConfig | null {
     const globalReaction = config.reactions[reactionKey];
+    if (!project) return globalReaction ?? null;
     const projectReaction = project.reactions?.[reactionKey];
     const merged = projectReaction ? { ...globalReaction, ...projectReaction } : globalReaction;
     return merged ?? null;
@@ -472,7 +473,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         if (reactionKey) {
           // Merge project-specific overrides with global defaults
           const project = config.projects[session.projectId];
-          const reactionConfig = project ? getReactionConfig(reactionKey, project) : null;
+          const reactionConfig = getReactionConfig(reactionKey, project);
 
           if (reactionConfig && reactionConfig.action) {
             // auto: false skips automated agent actions but still allows notifications
@@ -658,7 +659,25 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         const reactionConfig = getReactionConfig(reactionKey, project);
 
         if (reactionConfig && reactionConfig.action) {
-          // Re-execute reaction (checks escalation timer)
+          // Check if reaction already triggered (to prevent spam)
+          const trackerKey = `${session.id}:${reactionKey}`;
+          const tracker = reactionTrackers.get(trackerKey);
+
+          // Skip if reaction was recently triggered and escalation time hasn't passed
+          if (tracker && reactionConfig.escalateAfter) {
+            const escalateDuration =
+              typeof reactionConfig.escalateAfter === "string"
+                ? parseDuration(reactionConfig.escalateAfter)
+                : reactionConfig.escalateAfter * 60_000;
+            const elapsed = Date.now() - tracker.firstTriggered.getTime();
+
+            // Only re-trigger if escalation time has passed (to actually escalate)
+            if (elapsed < escalateDuration) {
+              continue; // Skip - not time to escalate yet
+            }
+          }
+
+          // Execute reaction (first time or ready to escalate)
           await executeReaction(
             session.id,
             session.projectId,
