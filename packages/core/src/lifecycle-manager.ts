@@ -581,11 +581,13 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         });
 
         if (result.success) {
-          // Silent success - update metadata
+          // Silent success - update metadata and clear error fields
           updateMetadata(sessionsDir, session.id, {
             lastRebaseTime: new Date().toISOString(),
             lastRebaseMainSHA: mainBranchSHA,
             rebaseStatus: "clean",
+            rebaseError: "", // Clear stale error from previous failure
+            lastRebaseAttempt: "", // Clear stale attempt timestamp
           });
 
           // Clear reaction tracker for rebase-conflicts (prevents stale state on re-conflict)
