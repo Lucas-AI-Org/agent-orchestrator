@@ -102,6 +102,11 @@ export function readMetadata(dataDir: string, sessionId: SessionId): SessionMeta
     dashboardPort: raw["dashboardPort"] ? Number(raw["dashboardPort"]) : undefined,
     terminalWsPort: raw["terminalWsPort"] ? Number(raw["terminalWsPort"]) : undefined,
     directTerminalWsPort: raw["directTerminalWsPort"] ? Number(raw["directTerminalWsPort"]) : undefined,
+    lastRebaseTime: raw["lastRebaseTime"],
+    lastRebaseMainSHA: raw["lastRebaseMainSHA"],
+    rebaseStatus: raw["rebaseStatus"] as "clean" | "conflicted" | "error" | undefined,
+    rebaseError: raw["rebaseError"],
+    lastRebaseAttempt: raw["lastRebaseAttempt"],
   };
 }
 
@@ -147,6 +152,11 @@ export function writeMetadata(
     data["terminalWsPort"] = String(metadata.terminalWsPort);
   if (metadata.directTerminalWsPort !== undefined)
     data["directTerminalWsPort"] = String(metadata.directTerminalWsPort);
+  if (metadata.lastRebaseTime) data["lastRebaseTime"] = metadata.lastRebaseTime;
+  if (metadata.lastRebaseMainSHA) data["lastRebaseMainSHA"] = metadata.lastRebaseMainSHA;
+  if (metadata.rebaseStatus) data["rebaseStatus"] = metadata.rebaseStatus;
+  if (metadata.rebaseError) data["rebaseError"] = metadata.rebaseError;
+  if (metadata.lastRebaseAttempt) data["lastRebaseAttempt"] = metadata.lastRebaseAttempt;
 
   writeFileSync(path, serializeMetadata(data), "utf-8");
 }
