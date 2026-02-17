@@ -7,6 +7,9 @@ import {
   loadConfig,
   buildPrompt,
   tmuxSendKeys,
+  getWorktreesDir,
+  getSessionsDir,
+  validateAndStoreOrigin,
   type OrchestratorConfig,
   type ProjectConfig,
 } from "@composio/ao-core";
@@ -48,7 +51,8 @@ async function spawnSession(
   const prefix = project.sessionPrefix || projectId;
   const num = await getNextSessionNumber(prefix);
   const sessionName = `${prefix}-${num}`;
-  const worktreePath = join(config.worktreeDir, projectId, sessionName);
+  const worktreesDir = getWorktreesDir(config.configPath, project.path);
+  const worktreePath = join(worktreesDir, sessionName);
 
   const spinner = ora(`Creating session ${sessionName}`).start();
 
@@ -128,8 +132,9 @@ async function spawnSession(
     spinner.text = "Configuring agent hooks";
     if (agent.setupWorkspaceHooks) {
       try {
+        const sessionsDir = getSessionsDir(config.configPath, project.path);
         await agent.setupWorkspaceHooks(worktreePath, {
-          dataDir: config.dataDir,
+          dataDir: sessionsDir,
           sessionId: sessionName,
         });
       } catch {
@@ -148,6 +153,7 @@ async function spawnSession(
     });
 
     // Create tmux session
+    const sessionsDir = getSessionsDir(config.configPath, project.path);
     const envVar = `${prefix.toUpperCase().replace(/[^A-Z0-9_]/g, "_")}_SESSION`;
     const tmuxArgs = [
       "new-session",
@@ -163,7 +169,7 @@ async function spawnSession(
       "-e",
       `AO_PROJECT_ID=${projectId}`,
       "-e",
-      `AO_DATA_DIR=${config.dataDir}`,
+      `AO_DATA_DIR=${sessionsDir}`,
       "-e",
       "DIRENV_LOG_FORMAT=",
     ];
@@ -198,11 +204,13 @@ async function spawnSession(
 
     spinner.text = "Writing metadata";
 
-    // Write metadata to flat directory (consistent with session-manager.ts)
-    mkdirSync(config.dataDir, { recursive: true });
+    // Write metadata to project-specific directory
+    // Note: sessionsDir already calculated above for AO_DATA_DIR
+    mkdirSync(sessionsDir, { recursive: true });
+    validateAndStoreOrigin(config.configPath, project.path);
     const liveBranch = await git(["branch", "--show-current"], worktreePath);
 
-    writeMetadata(join(config.dataDir, sessionName), {
+    writeMetadata(join(sessionsDir, sessionName), {
       worktree: worktreePath,
       branch: liveBranch || branch || "detached",
       status: "spawning",
@@ -310,6 +318,8 @@ export function registerBatchSpawn(program: Command): void {
       const failed: Array<{ issue: string; error: string }> = [];
       const spawnedIssues = new Set<string>();
 
+      const sessionsDir = getSessionsDir(config.configPath, project.path);
+
       for (const issue of issues) {
         // Duplicate detection — check both existing sessions and same-run duplicates
         if (spawnedIssues.has(issue.toLowerCase())) {
@@ -317,7 +327,7 @@ export function registerBatchSpawn(program: Command): void {
           skipped.push({ issue, existing: "(this batch)" });
           continue;
         }
-        const existing = await findSessionForIssue(config.dataDir, issue, allTmux, projectId);
+        const existing = await findSessionForIssue(sessionsDir, issue, allTmux, projectId);
         if (existing) {
           console.log(chalk.yellow(`  Skip ${issue} — already has session: ${existing}`));
           skipped.push({ issue, existing });

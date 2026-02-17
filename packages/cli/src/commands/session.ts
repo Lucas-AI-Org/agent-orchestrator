@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import type { Command } from "commander";
-import { loadConfig, type OrchestratorConfig } from "@composio/ao-core";
+import { loadConfig, getSessionsDir, type OrchestratorConfig } from "@composio/ao-core";
 import { tmux, git, gh, getTmuxSessions, getTmuxActivity } from "../lib/shell.js";
 import { readMetadata, archiveMetadata } from "../lib/metadata.js";
 import { formatAge } from "../lib/format.js";
@@ -11,7 +11,9 @@ async function killSession(
   projectId: string,
   sessionName: string,
 ): Promise<void> {
-  const metaFile = `${config.dataDir}/${sessionName}`;
+  const project = config.projects[projectId];
+  const sessionsDir = getSessionsDir(config.configPath, project.path);
+  const metaFile = `${sessionsDir}/${sessionName}`;
   const meta = readMetadata(metaFile);
 
   // Kill tmux session
@@ -23,7 +25,6 @@ async function killSession(
   // Remove worktree if we know about it
   const worktree = meta?.worktree;
   if (worktree) {
-    const project = config.projects[projectId];
     if (project) {
       const removed = await git(["worktree", "remove", "--force", worktree], project.path);
       if (removed !== null) {
@@ -35,7 +36,7 @@ async function killSession(
   }
 
   // Archive metadata
-  archiveMetadata(config.dataDir, sessionName);
+  archiveMetadata(sessionsDir, sessionName);
   console.log(chalk.green(`  Archived metadata`));
 }
 
@@ -60,6 +61,7 @@ export function registerSession(program: Command): void {
       for (const [projectId, project] of Object.entries(projects)) {
         const prefix = project.sessionPrefix || projectId;
         const projectSessions = allTmux.filter((s) => matchesPrefix(s, prefix));
+        const sessionsDir = getSessionsDir(config.configPath, project.path);
 
         console.log(chalk.bold(`\n${project.name || projectId}:`));
 
@@ -69,7 +71,7 @@ export function registerSession(program: Command): void {
         }
 
         for (const name of projectSessions.sort()) {
-          const meta = readMetadata(`${config.dataDir}/${name}`);
+          const meta = readMetadata(`${sessionsDir}/${name}`);
           const activityTs = await getTmuxActivity(name);
           const age = activityTs ? formatAge(activityTs) : "-";
 
@@ -129,9 +131,10 @@ export function registerSession(program: Command): void {
       for (const [projectId, project] of Object.entries(projects)) {
         const prefix = project.sessionPrefix || projectId;
         const projectSessions = allTmux.filter((s) => matchesPrefix(s, prefix));
+        const sessionsDir = getSessionsDir(config.configPath, project.path);
 
         for (const sessionName of projectSessions) {
-          const meta = readMetadata(`${config.dataDir}/${sessionName}`);
+          const meta = readMetadata(`${sessionsDir}/${sessionName}`);
           if (!meta) continue;
 
           let shouldKill = false;

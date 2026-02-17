@@ -12,6 +12,7 @@ import {
   type ReviewDecision,
   type ActivityState,
   loadConfig,
+  getSessionsDir,
 } from "@composio/ao-core";
 import { git, getTmuxSessions, getTmuxActivity } from "../lib/shell.js";
 import { readMetadata } from "../lib/metadata.js";
@@ -281,6 +282,7 @@ export function registerStatus(program: Command): void {
       for (const [projectId, projectConfig] of Object.entries(projects)) {
         const prefix = projectConfig.sessionPrefix || projectId;
         const projectSessions = allTmux.filter((s) => matchesPrefix(s, prefix));
+        const sessionsDir = getSessionsDir(config.configPath, projectConfig.path);
 
         // Resolve plugins for this project
         const agent = getAgent(config, projectId);
@@ -308,7 +310,7 @@ export function registerStatus(program: Command): void {
         const infoPromises = projectSessions
           .sort()
           .map((session) =>
-            gatherSessionInfo(session, config.dataDir, agent, scm, projectConfig),
+            gatherSessionInfo(session, sessionsDir, agent, scm, projectConfig),
           );
         const sessionInfos = await Promise.all(infoPromises);
 
