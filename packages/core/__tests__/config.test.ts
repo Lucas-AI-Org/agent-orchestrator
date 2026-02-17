@@ -38,7 +38,7 @@ describe("Config Loading", () => {
   describe("findConfigFile", () => {
     it("should find config in current directory", () => {
       const configPath = join(testDir, "agent-orchestrator.yaml");
-      writeFileSync(configPath, "dataDir: ~/.test\nprojects: {}");
+      writeFileSync(configPath, "projects: {}");
 
       const found = findConfigFile();
       // Use realpathSync to handle macOS /var -> /private/var symlink
@@ -50,11 +50,11 @@ describe("Config Loading", () => {
       const customDir = join(testDir, "custom");
       mkdirSync(customDir);
       const customConfig = join(customDir, "custom-config.yaml");
-      writeFileSync(customConfig, "dataDir: ~/.test\nprojects: {}");
+      writeFileSync(customConfig, "projects: {}");
 
       // Create config in current directory too
       const localConfig = join(testDir, "agent-orchestrator.yaml");
-      writeFileSync(localConfig, "dataDir: ~/.local\nprojects: {}");
+      writeFileSync(localConfig, "projects: {}");
 
       // Set env var to point to custom location
       process.env["AO_CONFIG_PATH"] = customConfig;
@@ -75,8 +75,6 @@ describe("Config Loading", () => {
       writeFileSync(
         configPath,
         `
-dataDir: ~/.test-orchestrator
-worktreeDir: ~/.test-worktrees
 port: 4000
 projects:
   test-project:
@@ -90,7 +88,6 @@ projects:
 
       const config = loadConfig();
       expect(config.port).toBe(4000);
-      expect(config.dataDir).toContain(".test-orchestrator");
       expect(config.projects["test-project"]).toBeDefined();
     });
 
@@ -99,7 +96,6 @@ projects:
       writeFileSync(
         configPath,
         `
-dataDir: ~/.explicit
 port: 5000
 projects:
   explicit-project:
@@ -123,8 +119,8 @@ projects:
       const envConfig = join(testDir, "env-config.yaml");
       const explicitConfig = join(testDir, "explicit-config.yaml");
 
-      writeFileSync(envConfig, "dataDir: ~/.env\nport: 3001\nprojects: {}");
-      writeFileSync(explicitConfig, "dataDir: ~/.explicit\nport: 3002\nprojects: {}");
+      writeFileSync(envConfig, "port: 3001\nprojects: {}");
+      writeFileSync(explicitConfig, "port: 3002\nprojects: {}");
 
       process.env["AO_CONFIG_PATH"] = envConfig;
 
@@ -136,8 +132,8 @@ projects:
       const envConfig = join(testDir, "env-config.yaml");
       const localConfig = join(testDir, "agent-orchestrator.yaml");
 
-      writeFileSync(envConfig, "dataDir: ~/.env\nport: 3001\nprojects: {}");
-      writeFileSync(localConfig, "dataDir: ~/.local\nport: 3002\nprojects: {}");
+      writeFileSync(envConfig, "port: 3001\nprojects: {}");
+      writeFileSync(localConfig, "port: 3002\nprojects: {}");
 
       process.env["AO_CONFIG_PATH"] = envConfig;
 
