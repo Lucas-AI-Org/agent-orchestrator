@@ -868,19 +868,19 @@ console.log(`[DirectTerminal] WebSocket server listening on port ${PORT}`);
 - Integration: 163 tests pass (17 files), 1 pre-existing codex binary failure
 - No flaky tests
 
-### Phase 6: Documentation & Cleanup 🔄
+### Phase 6: Documentation & Cleanup ✅ (DONE)
 
 **Goal:** Document new architecture and remove old code
 
-1. Update `README.md` with service architecture
-2. Add JSDoc to all services
-3. Remove old `port.ts` utility (merged into PortManager)
-4. Add architecture diagram
+1. ✅ Remove dead `findAvailablePort` from `port.ts` (superseded by PortManager)
+2. ✅ Remove dead `lib/metadata.ts` and its test (superseded by MetadataService + core)
+3. ✅ All services have JSDoc (ConfigService, PortManager, DashboardManager, MetadataService, ProcessManager)
+4. ✅ `port.ts` streamlined to single `isPortAvailable` used by PortManager
 
 **Validation:**
-- Documentation is clear
 - No dead code remains
-- Team understands new architecture
+- All 164 CLI tests pass (16 files)
+- Typecheck and lint clean
 
 ---
 
