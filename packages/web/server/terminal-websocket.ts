@@ -13,11 +13,8 @@
  *   - Rate limiting for terminal access
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { createServer, request } from "node:http";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-import { loadConfig } from "@composio/ao-core";
 
 interface TtydInstance {
   sessionId: string;
@@ -30,8 +27,6 @@ const availablePorts = new Set<number>(); // Pool of recycled ports
 let nextPort = 7800; // Start ttyd instances from port 7800
 const MAX_PORT = 7900; // Prevent unbounded port allocation
 
-// Load config once at startup
-const config = loadConfig();
 
 /**
  * Check if ttyd is ready to accept connections by making a test request.
@@ -247,9 +242,10 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    // Validate session exists before spawning ttyd using configured dataDir
-    const sessionPath = join(config.dataDir, sessionId);
-    if (!existsSync(sessionPath)) {
+    // Validate tmux session exists before spawning ttyd
+    try {
+      execFileSync("tmux", ["has-session", "-t", sessionId], { timeout: 5000 });
+    } catch {
       res.writeHead(404, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Session not found" }));
       return;

@@ -8,27 +8,67 @@
  */
 
 import { createServer } from "node:http";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { WebSocketServer, WebSocket } from "ws";
 import { spawn as ptySpawn, type IPty } from "node-pty";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { homedir, userInfo } from "node:os";
-import { loadConfig } from "@composio/ao-core";
 
-// Load config with fallback
-let config: ReturnType<typeof loadConfig>;
-try {
-  config = loadConfig();
-} catch (err) {
-  console.warn(
-    "[DirectTerminal] Could not load config, using defaults:",
-    err instanceof Error ? err.message : String(err),
-  );
-  // Fallback to default config
-  config = {
-    dataDir: join(homedir(), ".ao/sessions"),
-  } as ReturnType<typeof loadConfig>;
+/**
+ * Find full path to tmux. Checks common locations since node-pty
+ * doesn't reliably inherit PATH for posix_spawnp.
+ */
+function findTmux(): string {
+  const candidates = [
+    "/opt/homebrew/bin/tmux", // macOS ARM (Homebrew)
+    "/usr/local/bin/tmux", // macOS Intel (Homebrew)
+    "/usr/bin/tmux", // Linux
+  ];
+  for (const p of candidates) {
+    try {
+      execFileSync(p, ["-V"], { timeout: 5000 });
+      return p;
+    } catch {
+      continue;
+    }
+  }
+  return "tmux"; // Fall back to bare name
+}
+
+/** Cached full path to tmux binary */
+const TMUX = findTmux();
+console.log(`[DirectTerminal] Using tmux: ${TMUX}`);
+
+/**
+ * Resolve a user-facing session ID to its tmux session name.
+ * Tries exact match first, then searches for hash-prefixed sessions.
+ * Returns null if no matching tmux session is found.
+ */
+function resolveTmuxSession(sessionId: string): string | null {
+  // Try exact match first (e.g., "ao-orchestrator")
+  try {
+    execFileSync(TMUX, ["has-session", "-t", sessionId], { timeout: 5000 });
+    return sessionId;
+  } catch {
+    // Not an exact match
+  }
+
+  // Search for hash-prefixed tmux session (e.g., "8474d6f29887-ao-15" for "ao-15")
+  try {
+    const output = execFileSync(TMUX, ["list-sessions", "-F", "#{session_name}"], {
+      timeout: 5000,
+      encoding: "utf8",
+    });
+    const sessions = output.split("\n").filter(Boolean);
+    const match = sessions.find((s) => s.endsWith(`-${sessionId}`));
+    if (match) {
+      console.log(`[DirectTerminal] Resolved ${sessionId} → ${match}`);
+      return match;
+    }
+  } catch {
+    // tmux not running or no sessions
+  }
+
+  return null;
 }
 
 interface TerminalSession {
@@ -77,38 +117,41 @@ wss.on("connection", (ws, req) => {
     return;
   }
 
-  // Validate session ID
+  // Validate session ID format
   if (!/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
     console.error("[DirectTerminal] Invalid session ID:", sessionId);
     ws.close(1008, "Invalid session ID");
     return;
   }
 
-  // Validate session exists
-  const sessionPath = join(config.dataDir, sessionId);
-  if (!existsSync(sessionPath)) {
-    console.error("[DirectTerminal] Session not found:", sessionId);
+  // Resolve tmux session name: try exact match first, then suffix match
+  // (hash-prefixed sessions like "8474d6f29887-ao-15" are accessed by user-facing ID "ao-15")
+  const tmuxSessionId = resolveTmuxSession(sessionId);
+  if (!tmuxSessionId) {
+    console.error("[DirectTerminal] tmux session not found:", sessionId);
     ws.close(1008, "Session not found");
     return;
   }
 
-  console.log(`[DirectTerminal] New connection for session: ${sessionId}`);
+  console.log(`[DirectTerminal] New connection for session: ${tmuxSessionId}`);
 
   // Enable mouse mode for scrollback support
-  const mouseProc = spawn("tmux", ["set-option", "-t", sessionId, "mouse", "on"]);
+  const mouseProc = spawn(TMUX, ["set-option", "-t", tmuxSessionId, "mouse", "on"]);
   mouseProc.on("error", (err) => {
-    console.error(`[DirectTerminal] Failed to set mouse mode for ${sessionId}:`, err.message);
+    console.error(
+      `[DirectTerminal] Failed to set mouse mode for ${tmuxSessionId}:`,
+      err.message,
+    );
   });
 
   // Hide the green status bar for cleaner appearance
-  const statusProc = spawn("tmux", ["set-option", "-t", sessionId, "status", "off"]);
+  const statusProc = spawn(TMUX, ["set-option", "-t", tmuxSessionId, "status", "off"]);
   statusProc.on("error", (err) => {
-    console.error(`[DirectTerminal] Failed to hide status bar for ${sessionId}:`, err.message);
+    console.error(
+      `[DirectTerminal] Failed to hide status bar for ${tmuxSessionId}:`,
+      err.message,
+    );
   });
-
-  // Spawn PTY attached to tmux session
-  // Use tmux from PATH for cross-platform compatibility
-  const tmuxPath = "tmux";
 
   // Build complete environment - node-pty requires proper env setup
   const homeDir = process.env.HOME || homedir();
@@ -117,7 +160,7 @@ wss.on("connection", (ws, req) => {
     HOME: homeDir,
     SHELL: process.env.SHELL || "/bin/bash",
     USER: currentUser,
-    PATH: process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
+    PATH: process.env.PATH || "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
     TERM: "xterm-256color",
     LANG: process.env.LANG || "en_US.UTF-8",
     TMPDIR: process.env.TMPDIR || "/tmp",
@@ -125,10 +168,9 @@ wss.on("connection", (ws, req) => {
 
   let pty: IPty;
   try {
-    console.log(`[DirectTerminal] Spawning PTY: ${tmuxPath} attach-session -t ${sessionId}`);
-    console.log(`[DirectTerminal] CWD: ${homeDir}, ENV keys:`, Object.keys(env).join(", "));
+    console.log(`[DirectTerminal] Spawning PTY: tmux attach-session -t ${tmuxSessionId}`);
 
-    pty = ptySpawn(tmuxPath, ["attach-session", "-t", sessionId], {
+    pty = ptySpawn(TMUX, ["attach-session", "-t", tmuxSessionId], {
       name: "xterm-256color",
       cols: 80,
       rows: 24,
