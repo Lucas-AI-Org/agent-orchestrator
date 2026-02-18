@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
-import type { LogEntry } from "../log-writer.js";
+import type { LogEntry } from "../types.js";
 import { readLogs, readLogsFromDir, tailLogs } from "../log-reader.js";
 
 let testDir: string;

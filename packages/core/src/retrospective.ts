@@ -8,26 +8,11 @@
 
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { generateReportCard, type SessionReportCard } from "./session-report-card.js";
+import { generateReportCard } from "./session-report-card.js";
 import { readLogs } from "./log-reader.js";
 import { readMetadataRaw } from "./metadata.js";
 import { getSessionsDir, getLogsDir } from "./paths.js";
-import type { OrchestratorConfig } from "./types.js";
-
-export interface Retrospective {
-  sessionId: string;
-  projectId: string;
-  generatedAt: string;
-  outcome: "success" | "failure" | "partial";
-  timeline: Array<{ event: string; at: string; detail: string }>;
-  metrics: {
-    totalDurationMs: number;
-    ciFailures: number;
-    reviewRounds: number;
-  };
-  lessons: string[];
-  reportCard: SessionReportCard;
-}
+import type { OrchestratorConfig, Retrospective, RetrospectiveStore, SessionReportCard } from "./types.js";
 
 /** Generate a retrospective for a completed session. */
 export function generateRetrospective(
@@ -190,4 +175,20 @@ function extractLessons(
   }
 
   return lessons;
+}
+
+/**
+ * Default RetrospectiveStore implementation backed by JSON files on disk.
+ * Each retrospective is saved as `{sessionId}-{timestamp}.json`.
+ */
+export class JsonlRetrospectiveStore implements RetrospectiveStore {
+  constructor(private readonly dir: string) {}
+
+  save(retro: Retrospective): void {
+    saveRetrospective(retro, this.dir);
+  }
+
+  load(opts?: { sessionId?: string; projectId?: string; limit?: number }): Retrospective[] {
+    return loadRetrospectives(this.dir, opts);
+  }
 }

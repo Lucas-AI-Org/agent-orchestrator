@@ -82,21 +82,18 @@ export {
   validateAndStoreOrigin,
 } from "./paths.js";
 
-// Log writer — JSONL structured logging with rotation
+// Log writer — JSONL structured logging with rotation (default EventLogger implementation)
 export { LogWriter } from "./log-writer.js";
-export type { LogEntry, LogWriterOptions } from "./log-writer.js";
+export type { LogWriterOptions } from "./log-writer.js";
 
 // Log reader — query and filter JSONL logs
 export { readLogs, readLogsFromDir, tailLogs } from "./log-reader.js";
-export type { LogQueryOptions } from "./log-reader.js";
 
 // Session report card — per-session metrics
 export { generateReportCard } from "./session-report-card.js";
-export type { SessionReportCard } from "./session-report-card.js";
 
-// Retrospective — session analysis
-export { generateRetrospective, saveRetrospective, loadRetrospectives } from "./retrospective.js";
-export type { Retrospective } from "./retrospective.js";
+// Retrospective — session analysis (includes default RetrospectiveStore implementation)
+export { generateRetrospective, saveRetrospective, loadRetrospectives, JsonlRetrospectiveStore } from "./retrospective.js";
 
 // Dashboard manager — programmatic dashboard process control
 export { restartDashboard, waitForHealthy, getDashboardStatus, stopDashboard } from "./dashboard-manager.js";

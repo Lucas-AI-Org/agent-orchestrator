@@ -3,7 +3,8 @@ import { mkdirSync, rmSync, writeFileSync, readFileSync, readdirSync } from "nod
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
-import { saveRetrospective, loadRetrospectives, type Retrospective } from "../retrospective.js";
+import type { Retrospective } from "../types.js";
+import { saveRetrospective, loadRetrospectives } from "../retrospective.js";
 
 let tmpDir: string;
 let retroDir: string;

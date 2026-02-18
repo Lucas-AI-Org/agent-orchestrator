@@ -7,17 +7,7 @@
 
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join, basename } from "node:path";
-import type { LogEntry } from "./log-writer.js";
-
-export interface LogQueryOptions {
-  since?: Date;
-  until?: Date;
-  level?: LogEntry["level"][];
-  sessionId?: string;
-  source?: LogEntry["source"];
-  limit?: number;
-  pattern?: string;
-}
+import type { LogEntry, LogQueryOptions } from "./types.js";
 
 /** Read and filter log entries from a single JSONL file. */
 export function readLogs(filePath: string, opts?: LogQueryOptions): LogEntry[] {

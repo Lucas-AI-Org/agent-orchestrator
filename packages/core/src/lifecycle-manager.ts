@@ -32,10 +32,11 @@ import {
   type Session,
   type EventPriority,
   type ProjectConfig as _ProjectConfig,
+  type LogEntry,
+  type EventLogger,
 } from "./types.js";
 import { updateMetadata } from "./metadata.js";
 import { getSessionsDir, getRetrospectivesDir } from "./paths.js";
-import { LogWriter, type LogEntry } from "./log-writer.js";
 import { generateRetrospective, saveRetrospective } from "./retrospective.js";
 
 /** Parse a duration string like "10m", "30s", "1h" to milliseconds. */
@@ -162,7 +163,8 @@ export interface LifecycleManagerDeps {
   config: OrchestratorConfig;
   registry: PluginRegistry;
   sessionManager: SessionManager;
-  logDir?: string;
+  /** Optional event logger for persisting lifecycle events. */
+  eventLogger?: EventLogger;
 }
 
 /** Track attempt counts for reactions per session. */
@@ -175,15 +177,7 @@ interface ReactionTracker {
 export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleManager {
   const { config, registry, sessionManager } = deps;
 
-  // Initialize event log writer if logDir is provided
-  let eventLogWriter: LogWriter | null = null;
-  if (deps.logDir) {
-    eventLogWriter = new LogWriter({
-      filePath: `${deps.logDir}/events.jsonl`,
-      maxSizeBytes: 10 * 1024 * 1024, // 10MB
-      maxBackups: 3,
-    });
-  }
+  const eventLogWriter = deps.eventLogger ?? null;
 
   const states = new Map<SessionId, SessionStatus>();
   const reactionTrackers = new Map<string, ReactionTracker>(); // "sessionId:reactionKey"

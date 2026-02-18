@@ -6,21 +6,7 @@
  */
 
 import { readLogs } from "./log-reader.js";
-
-export interface SessionReportCard {
-  sessionId: string;
-  projectId: string;
-  duration: {
-    startedAt: string;
-    endedAt: string | null;
-    totalMs: number;
-  };
-  stateTransitions: Array<{ from: string; to: string; at: string }>;
-  ciAttempts: number;
-  reviewRounds: number;
-  outcome: "merged" | "killed" | "abandoned" | "active";
-  prUrl: string | null;
-}
+import type { SessionReportCard } from "./types.js";
 
 /** Generate a report card for a session from its event log entries. */
 export function generateReportCard(

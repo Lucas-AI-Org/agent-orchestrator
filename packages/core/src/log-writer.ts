@@ -7,15 +7,7 @@
 
 import { appendFileSync, statSync, renameSync, mkdirSync, existsSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
-
-export interface LogEntry {
-  ts: string;
-  level: "stdout" | "stderr" | "info" | "warn" | "error";
-  source: "dashboard" | "lifecycle" | "cli" | "api" | "browser";
-  sessionId: string | null;
-  message: string;
-  data?: Record<string, unknown>;
-}
+import type { LogEntry, EventLogger } from "./types.js";
 
 export interface LogWriterOptions {
   filePath: string;
@@ -26,7 +18,7 @@ export interface LogWriterOptions {
 const DEFAULT_MAX_SIZE = 50 * 1024 * 1024; // 50MB
 const DEFAULT_MAX_BACKUPS = 5;
 
-export class LogWriter {
+export class LogWriter implements EventLogger {
   private readonly filePath: string;
   private readonly maxSizeBytes: number;
   private readonly maxBackups: number;
