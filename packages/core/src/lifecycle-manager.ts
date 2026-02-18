@@ -47,8 +47,8 @@ import {
   type ProjectConfig as _ProjectConfig,
 } from "./types.js";
 import { updateMetadata } from "./metadata.js";
-import { getSessionsDir } from "./paths.js";
-import { createNullEventLog } from "./event-log.js";
+import { getSessionsDir, getEventLogPath } from "./paths.js";
+import { createEventLog } from "./event-log.js";
 
 /** Parse a duration string like "10m", "30s", "1h" to milliseconds. */
 function parseDuration(str: string): number {
@@ -185,7 +185,7 @@ export interface LifecycleManagerDeps {
   config: OrchestratorConfig;
   registry: PluginRegistry;
   sessionManager: SessionManager;
-  /** Optional event log for auditing all emitted events. Defaults to no-op. */
+  /** Optional event log for auditing all emitted events. Defaults to file-based log at getEventLogPath(config.configPath). */
   eventLog?: EventLog;
 }
 
@@ -206,7 +206,7 @@ interface ReactionTracker {
 /** Create a LifecycleManager instance. */
 export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleManager {
   const { config, registry, sessionManager } = deps;
-  const eventLog = deps.eventLog ?? createNullEventLog();
+  const eventLog = deps.eventLog ?? createEventLog(getEventLogPath(config.configPath));
 
   const states = new Map<SessionId, SessionStatus>();
   const reactionTrackers = new Map<string, ReactionTracker>(); // "sessionId:reactionKey"
