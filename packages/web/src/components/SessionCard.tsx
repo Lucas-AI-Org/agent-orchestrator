@@ -11,7 +11,7 @@ import {
 import { CI_STATUS } from "@composio/ao-core/types";
 import { cn } from "@/lib/cn";
 import { activityIcon } from "@/lib/activity-icons";
-import { humanizeBranch } from "@/lib/format";
+import { getSessionTitle } from "@/lib/format";
 import { PRStatus } from "./PRStatus";
 import { CICheckList } from "./CIBadge";
 
@@ -91,10 +91,7 @@ export function SessionCard({ session, onSend, onKill, onMerge, onRestore }: Ses
           {session.id}
         </span>
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--color-text-primary)]">
-          {pr?.title ??
-            session.summary ??
-            session.issueTitle ??
-            (session.branch ? humanizeBranch(session.branch) : session.status)}
+          {getSessionTitle(session)}
         </span>
         {isRestorable && (
           <button

@@ -286,6 +286,7 @@ describe("enrichSessionPR", () => {
       issueId: null,
       issueUrl: null,
       issueLabel: null,
+      issueTitle: null,
       summary: null,
       createdAt: new Date().toISOString(),
       lastActivityAt: new Date().toISOString(),
