@@ -17,27 +17,8 @@ import {
   type LogEntry,
   type LogQueryOptions,
 } from "@composio/ao-core";
-import { parseSinceArg } from "../lib/format.js";
+import { formatLogEntry, parseSinceArg } from "../lib/format.js";
 import { resolveLogDir } from "../lib/perf-utils.js";
-
-/** Format a log entry for terminal display. */
-function formatLogEntry(entry: LogEntry): string {
-  const ts = new Date(entry.ts).toLocaleTimeString();
-  const level = colorLevel(entry.level);
-  const session = entry.sessionId ? chalk.cyan(entry.sessionId) + " " : "";
-  return `${chalk.dim(ts)} ${level} ${session}${entry.message}`;
-}
-
-/** Color-code log level. */
-function colorLevel(level: LogEntry["level"]): string {
-  switch (level) {
-    case "error": return chalk.red("ERR");
-    case "warn": return chalk.yellow("WRN");
-    case "stderr": return chalk.red("err");
-    case "stdout": return chalk.dim("out");
-    case "info": return chalk.blue("inf");
-  }
-}
 
 export function registerLogs(program: Command): void {
   const logsCmd = program

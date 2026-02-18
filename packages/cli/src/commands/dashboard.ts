@@ -33,7 +33,7 @@ import {
   findProcessWebDir,
   waitForPortFree,
 } from "../lib/dashboard-rebuild.js";
-import { formatAge, parseSinceArg } from "../lib/format.js";
+import { formatAge, formatLogEntry, parseSinceArg } from "../lib/format.js";
 import { resolveLogDir as resolveLogDirStrict } from "../lib/perf-utils.js";
 
 /** Nullable variant — dashboard degrades gracefully when no project is configured. */
@@ -88,18 +88,6 @@ function looksLikeStaleBuild(stderr: string): boolean {
     /Could not find a production build/,
   ];
   return patterns.some((p) => p.test(stderr));
-}
-
-/** Format a log entry for terminal display. */
-function formatLogEntry(entry: LogEntry): string {
-  const ts = new Date(entry.ts).toLocaleTimeString();
-  const level =
-    entry.level === "error" ? chalk.red("ERR") :
-    entry.level === "warn" ? chalk.yellow("WRN") :
-    entry.level === "stderr" ? chalk.red("err") :
-    entry.level === "info" ? chalk.blue("inf") :
-    chalk.dim("out");
-  return `${chalk.dim(ts)} ${level} ${entry.message}`;
 }
 
 /**
@@ -451,11 +439,19 @@ export function registerDashboard(program: Command): void {
           return;
         }
 
-        const n = parseInt(opts.tail ?? "50", 10);
-        let entries = tailLogs(logFile, n);
-
-        if (opts.level) {
-          entries = entries.filter((e) => e.level === opts.level);
+        let entries: LogEntry[];
+        if (opts.since) {
+          const queryOpts: LogQueryOptions = {
+            since: parseSinceArg(opts.since),
+            level: opts.level ? [opts.level as LogEntry["level"]] : undefined,
+          };
+          entries = readLogs(logFile, queryOpts);
+        } else {
+          const n = parseInt(opts.tail ?? "50", 10);
+          entries = tailLogs(logFile, n);
+          if (opts.level) {
+            entries = entries.filter((e) => e.level === opts.level);
+          }
         }
 
         if (opts.json) {
