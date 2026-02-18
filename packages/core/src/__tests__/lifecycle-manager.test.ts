@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { createLifecycleManager } from "../lifecycle-manager.js";
-import { createNullEventLog } from "../event-log.js";
+import { createNullEventLog, createEventLog } from "../event-log.js";
 import { writeMetadata, readMetadataRaw } from "../metadata.js";
 import { getSessionsDir, getProjectBaseDir } from "../paths.js";
 import type {
@@ -1419,5 +1419,218 @@ describe("persistent retrigger (retriggerAfter)", () => {
     // Check 3: still no retrigger
     await lm.check("app-1");
     expect(mockSessionManager.send).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("event log ordering — transition event before reaction events", () => {
+  it("logs the transition event before the reaction.triggered event", async () => {
+    const loggedEventTypes: string[] = [];
+    const eventLog: EventLog = {
+      log: (event) => loggedEventTypes.push(event.type),
+      readRecent: () => [],
+    };
+
+    config.reactions = {
+      "ci-failed": {
+        auto: true,
+        action: "send-to-agent",
+        message: "CI is failing. Fix it.",
+        retries: 1,
+      },
+    };
+
+    const mockSCM: SCM = {
+      name: "mock-scm",
+      detectPR: vi.fn(),
+      getPRState: vi.fn().mockResolvedValue("open"),
+      mergePR: vi.fn(),
+      closePR: vi.fn(),
+      getCIChecks: vi.fn(),
+      getCISummary: vi.fn().mockResolvedValue("failing"),
+      getReviews: vi.fn(),
+      getReviewDecision: vi.fn().mockResolvedValue("none"),
+      getPendingComments: vi.fn().mockResolvedValue([]),
+      getAutomatedComments: vi.fn().mockResolvedValue([]),
+      getMergeability: vi.fn(),
+    };
+
+    const registryWithSCM: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "scm") return mockSCM;
+        return null;
+      }),
+    };
+
+    const session = makeSession({ status: "pr_open", pr: makePR() });
+    vi.mocked(mockSessionManager.get).mockResolvedValue(session);
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "main",
+      status: "pr_open",
+      project: "my-app",
+    });
+
+    const lm = createLifecycleManager({
+      config,
+      registry: registryWithSCM,
+      sessionManager: mockSessionManager,
+      eventLog,
+    });
+
+    // Transition from pr_open → ci_failed triggers both ci.failing and reaction.triggered
+    await lm.check("app-1");
+
+    const ciFailingIdx = loggedEventTypes.indexOf("ci.failing");
+    const reactionTriggeredIdx = loggedEventTypes.indexOf("reaction.triggered");
+
+    expect(ciFailingIdx).toBeGreaterThanOrEqual(0);
+    expect(reactionTriggeredIdx).toBeGreaterThanOrEqual(0);
+    // The root-cause transition event must appear before the reaction effect
+    expect(ciFailingIdx).toBeLessThan(reactionTriggeredIdx);
+  });
+});
+
+describe("retrigger escalation guard", () => {
+  it("does not re-escalate on every retrigger cycle after escalation threshold", async () => {
+    const mockNotifier: Notifier = {
+      name: "mock-notifier",
+      notify: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const mockRegistryWithNotifier: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "notifier") return mockNotifier;
+        if (slot === "scm") {
+          return {
+            name: "mock-scm",
+            detectPR: vi.fn(),
+            getPRState: vi.fn().mockResolvedValue("open"),
+            mergePR: vi.fn(),
+            closePR: vi.fn(),
+            getCIChecks: vi.fn(),
+            getCISummary: vi.fn().mockResolvedValue("failing"),
+            getReviews: vi.fn(),
+            getReviewDecision: vi.fn().mockResolvedValue("none"),
+            getPendingComments: vi.fn().mockResolvedValue([]),
+            getAutomatedComments: vi.fn().mockResolvedValue([]),
+            getMergeability: vi.fn(),
+          } satisfies SCM;
+        }
+        return null;
+      }),
+    };
+
+    config.reactions = {
+      "ci-failed": {
+        auto: true,
+        action: "send-to-agent",
+        message: "CI failing — fix it.",
+        // retries: 0 → escalate on the very first attempt
+        retries: 0,
+        retriggerAfter: "30s",
+      },
+    };
+
+    const session = makeSession({ status: "pr_open", pr: makePR() });
+    vi.mocked(mockSessionManager.get).mockResolvedValue(session);
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "main",
+      status: "pr_open",
+      project: "my-app",
+    });
+
+    vi.useFakeTimers();
+    try {
+      const lm = createLifecycleManager({
+        config,
+        registry: mockRegistryWithNotifier,
+        sessionManager: mockSessionManager,
+      });
+
+      // Check 1: pr_open → ci_failed; retries: 0 → escalates immediately (1 notification)
+      await lm.check("app-1");
+      expect(mockNotifier.notify).toHaveBeenCalledTimes(1);
+
+      // Advance past retriggerAfter — without the guard this would re-escalate
+      vi.advanceTimersByTime(31_000);
+
+      // Check 2: ci_failed → ci_failed; tracker.escalated = true → retrigger skipped
+      await lm.check("app-1");
+      expect(mockNotifier.notify).toHaveBeenCalledTimes(1); // still 1, no spam
+
+      // Check 3: still no extra notification
+      vi.advanceTimersByTime(31_000);
+      await lm.check("app-1");
+      expect(mockNotifier.notify).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("event-log readRecent validation", () => {
+  it("skips entries that do not match OrchestratorEvent schema", () => {
+    const logPath = join(tmpDir, "test-events.jsonl");
+    // Write a mix of valid and invalid entries
+    writeFileSync(
+      logPath,
+      [
+        // Valid entry
+        JSON.stringify({
+          id: "evt-1",
+          type: "ci.failing",
+          sessionId: "app-1",
+          projectId: "my-app",
+          timestamp: new Date().toISOString(),
+          message: "CI failing",
+          priority: "warning",
+          data: {},
+        }),
+        // Invalid — missing required fields
+        JSON.stringify({ foo: "bar" }),
+        // Invalid — timestamp not a string
+        JSON.stringify({
+          id: "evt-3",
+          type: "ci.failing",
+          sessionId: "app-1",
+          projectId: "my-app",
+          timestamp: 12345,
+          message: "bad",
+        }),
+        // Truncated / non-JSON
+        "not-json{",
+        // Another valid entry
+        JSON.stringify({
+          id: "evt-5",
+          type: "session.working",
+          sessionId: "app-1",
+          projectId: "my-app",
+          timestamp: new Date().toISOString(),
+          message: "working",
+          priority: "info",
+          data: {},
+        }),
+      ].join("\n") + "\n",
+    );
+
+    const log = createEventLog(logPath);
+    const events = log.readRecent();
+
+    // Only the two valid entries should be returned
+    expect(events).toHaveLength(2);
+    expect(events[0].type).toBe("ci.failing");
+    expect(events[1].type).toBe("session.working");
+    // Timestamps should be Date objects
+    expect(events[0].timestamp).toBeInstanceOf(Date);
+    expect(events[1].timestamp).toBeInstanceOf(Date);
   });
 });

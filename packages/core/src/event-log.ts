@@ -14,6 +14,25 @@ import { appendFileSync, existsSync, readFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { EventLog, OrchestratorEvent } from "./types.js";
 
+/**
+ * Runtime type guard for a parsed JSONL entry before accepting it as an
+ * OrchestratorEvent. Validates only the fields that are always written by
+ * the log() method — schema changes between versions silently drop unknown
+ * entries rather than returning incorrectly-typed objects to callers.
+ */
+function isValidEventEntry(val: unknown): val is OrchestratorEvent & { timestamp: string } {
+  if (typeof val !== "object" || val === null) return false;
+  const obj = val as Record<string, unknown>;
+  return (
+    typeof obj["id"] === "string" &&
+    typeof obj["type"] === "string" &&
+    typeof obj["sessionId"] === "string" &&
+    typeof obj["projectId"] === "string" &&
+    typeof obj["timestamp"] === "string" &&
+    typeof obj["message"] === "string"
+  );
+}
+
 /** Create an event log that appends events to a JSONL file at `logPath`. */
 export function createEventLog(logPath: string): EventLog {
   return {
@@ -38,9 +57,9 @@ export function createEventLog(logPath: string): EventLog {
         const slice = limit > 0 ? lines.slice(-limit) : lines;
         return slice.flatMap((line) => {
           try {
-            const parsed = JSON.parse(line) as unknown;
-            const entry = parsed as OrchestratorEvent & { timestamp: string };
-            return [{ ...entry, timestamp: new Date(entry.timestamp) }];
+            const parsed: unknown = JSON.parse(line);
+            if (!isValidEventEntry(parsed)) return [];
+            return [{ ...parsed, timestamp: new Date(parsed.timestamp) }];
           } catch {
             return [];
           }

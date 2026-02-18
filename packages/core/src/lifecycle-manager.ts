@@ -195,6 +195,12 @@ interface ReactionTracker {
   firstTriggered: Date;
   /** When the reaction was last attempted (for retrigger cooldown). */
   lastAttemptAt: Date;
+  /**
+   * True once the reaction has escalated to human notification.
+   * Prevents checkPersistentConditions from re-escalating on every retrigger
+   * cycle after the escalation threshold is reached.
+   */
+  escalated: boolean;
 }
 
 /** Create a LifecycleManager instance. */
@@ -333,7 +339,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
 
     if (!tracker) {
       const now = new Date();
-      tracker = { attempts: 0, firstTriggered: now, lastAttemptAt: now };
+      tracker = { attempts: 0, firstTriggered: now, lastAttemptAt: now, escalated: false };
       reactionTrackers.set(trackerKey, tracker);
     }
 
@@ -362,6 +368,10 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     }
 
     if (shouldEscalate) {
+      // Mark escalated so checkPersistentConditions won't keep re-escalating on every
+      // retrigger cycle after the threshold is reached.
+      tracker.escalated = true;
+
       // Escalate to human
       const event = createEvent("reaction.escalated", {
         sessionId,
@@ -593,6 +603,11 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     const tracker = reactionTrackers.get(trackerKey);
     if (!tracker) return; // Never triggered before — initial trigger happens on state transition
 
+    // Once escalated, stop retrying — human has been notified.
+    // Without this guard, every retrigger cycle after the escalation threshold
+    // would re-escalate, producing notification spam.
+    if (tracker.escalated) return;
+
     const retriggerMs = parseDuration(reactionConfig.retriggerAfter);
     if (retriggerMs <= 0) return;
 
@@ -646,6 +661,17 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       // Handle transition: notify humans and/or trigger reactions
       const eventType = statusToEventType(oldStatus, newStatus);
       if (eventType) {
+        // Emit transition event to log FIRST so the audit trail shows cause before
+        // effects. executeReaction will append its own reaction.triggered/escalated
+        // entries, which must appear after this root-cause event.
+        const event = createEvent(eventType, {
+          sessionId: session.id,
+          projectId: session.projectId,
+          message: `${session.id}: ${oldStatus} → ${newStatus}`,
+          data: { oldStatus, newStatus },
+        });
+        eventLog.log(event);
+
         let reactionHandledNotify = false;
         const reactionKey = eventToReactionKey(eventType);
 
@@ -669,15 +695,6 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
             }
           }
         }
-
-        // Emit event to log
-        const event = createEvent(eventType, {
-          sessionId: session.id,
-          projectId: session.projectId,
-          message: `${session.id}: ${oldStatus} → ${newStatus}`,
-          data: { oldStatus, newStatus },
-        });
-        eventLog.log(event);
 
         // For significant transitions not already notified by a reaction, notify humans
         if (!reactionHandledNotify) {
