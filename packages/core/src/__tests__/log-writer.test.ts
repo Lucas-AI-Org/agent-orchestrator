@@ -1,10 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdirSync, rmSync, readFileSync, existsSync, writeFileSync, chmodSync } from "node:fs";
+import { mkdirSync, rmSync, readFileSync, existsSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
-import { LogWriter } from "../log-writer.js";
-import type { LogEntry } from "../log-writer.js";
+import { LogWriter, type LogEntry } from "../log-writer.js";
 
 let testDir: string;
 
