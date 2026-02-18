@@ -90,8 +90,8 @@ const DefaultPluginsSchema = z.object({
 
 const OrchestratorConfigSchema = z.object({
   port: z.number().default(3000),
-  terminalPort: z.number().default(3001),
-  directTerminalPort: z.number().default(3003),
+  terminalPort: z.number().optional(),
+  directTerminalPort: z.number().optional(),
   readyThresholdMs: z.number().nonnegative().default(300_000),
   defaults: DefaultPluginsSchema.default({}),
   projects: z.record(ProjectConfigSchema),
