@@ -111,6 +111,14 @@ export function registerBatchSpawn(program: Command): void {
       const failed: Array<{ issue: string; error: string }> = [];
       const spawnedIssues = new Set<string>();
 
+      // Load existing sessions once before the loop to avoid repeated reads + enrichment
+      const existingSessions = await sm.list(projectId);
+      const existingIssueMap = new Map(
+        existingSessions
+          .filter((s) => s.issueId)
+          .map((s) => [s.issueId!.toLowerCase(), s.id]),
+      );
+
       for (const issue of issues) {
         // Duplicate detection — check both existing sessions and same-run duplicates
         if (spawnedIssues.has(issue.toLowerCase())) {
@@ -119,14 +127,11 @@ export function registerBatchSpawn(program: Command): void {
           continue;
         }
 
-        // Check existing sessions via session manager (works with hash-based naming)
-        const existingSessions = await sm.list(projectId);
-        const existingSession = existingSessions.find(
-          (s) => s.issueId?.toLowerCase() === issue.toLowerCase(),
-        );
-        if (existingSession) {
-          console.log(chalk.yellow(`  Skip ${issue} — already has session: ${existingSession.id}`));
-          skipped.push({ issue, existing: existingSession.id });
+        // Check existing sessions (pre-loaded before loop)
+        const existingSessionId = existingIssueMap.get(issue.toLowerCase());
+        if (existingSessionId) {
+          console.log(chalk.yellow(`  Skip ${issue} — already has session: ${existingSessionId}`));
+          skipped.push({ issue, existing: existingSessionId });
           continue;
         }
 

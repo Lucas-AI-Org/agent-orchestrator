@@ -9,41 +9,26 @@ import { getAgentByName } from "../lib/plugins.js";
 import { getSessionManager } from "../lib/create-session-manager.js";
 
 /**
- * Resolve the tmux session name for a user-facing session ID.
- * Returns the runtimeHandle.id (which is the tmux session name) or falls back
- * to the session name itself for backwards compatibility with pre-hash sessions.
+ * Resolve session context: tmux target name and Agent plugin.
+ * Loads config and looks up the session once, avoiding duplicate work.
  */
-async function resolveTmuxTarget(sessionName: string): Promise<string> {
-  try {
-    const config = loadConfig();
-    const sm = await getSessionManager(config);
-    const session = await sm.get(sessionName);
-    if (session?.runtimeHandle?.id) {
-      return session.runtimeHandle.id;
-    }
-  } catch {
-    // No config or session not found — fall back to session name as tmux name
-  }
-  return sessionName;
-}
-
-/**
- * Resolve the Agent plugin for a session.
- */
-async function resolveAgentForSession(sessionName: string): Promise<{ agent: Agent; session: Session | null }> {
+async function resolveSessionContext(
+  sessionName: string,
+): Promise<{ tmuxTarget: string; agent: Agent; session: Session | null }> {
   try {
     const config = loadConfig();
     const sm = await getSessionManager(config);
     const session = await sm.get(sessionName);
     if (session) {
+      const tmuxTarget = session.runtimeHandle?.id ?? sessionName;
       const project = config.projects[session.projectId];
       const agentName = project?.agent ?? config.defaults.agent;
-      return { agent: getAgentByName(agentName), session };
+      return { tmuxTarget, agent: getAgentByName(agentName), session };
     }
   } catch {
-    // Fall through to default
+    // No config or session not found — fall back to defaults
   }
-  return { agent: getAgentByName("claude-code"), session: null };
+  return { tmuxTarget: sessionName, agent: getAgentByName("claude-code"), session: null };
 }
 
 function isActive(agent: Agent, terminalOutput: string): boolean {
@@ -73,8 +58,8 @@ export function registerSend(program: Command): void {
         messageParts: string[],
         opts: { file?: string; wait?: boolean; timeout?: string },
       ) => {
-        // Resolve tmux target name (hash-based or legacy)
-        const tmuxTarget = await resolveTmuxTarget(session);
+        // Resolve session context once: tmux target, agent plugin, session data
+        const { tmuxTarget, agent } = await resolveSessionContext(session);
 
         const exists = await tmux("has-session", "-t", tmuxTarget);
         if (exists === null) {
@@ -88,8 +73,6 @@ export function registerSend(program: Command): void {
           console.error(chalk.red("No message provided"));
           process.exit(1);
         }
-
-        const { agent } = await resolveAgentForSession(session);
 
         const parsedTimeout = parseInt(opts.timeout || "600", 10);
         const timeoutMs = (isNaN(parsedTimeout) || parsedTimeout <= 0 ? 600 : parsedTimeout) * 1000;
