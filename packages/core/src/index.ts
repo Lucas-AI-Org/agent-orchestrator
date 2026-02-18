@@ -97,3 +97,7 @@ export type { SessionReportCard } from "./session-report-card.js";
 // Retrospective — session analysis
 export { generateRetrospective, saveRetrospective, loadRetrospectives } from "./retrospective.js";
 export type { Retrospective } from "./retrospective.js";
+
+// Dashboard manager — programmatic dashboard process control
+export { restartDashboard, waitForHealthy, getDashboardStatus, stopDashboard } from "./dashboard-manager.js";
+export type { DashboardRestartOpts, DashboardRestartResult } from "./dashboard-manager.js";

@@ -13,7 +13,17 @@ import { resolve, join } from "node:path";
 import { existsSync, statSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import chalk from "chalk";
 import type { Command } from "commander";
-import { loadConfig, getLogsDir, LogWriter, tailLogs, type LogEntry } from "@composio/ao-core";
+import {
+  loadConfig,
+  getLogsDir,
+  LogWriter,
+  readLogs,
+  tailLogs,
+  restartDashboard,
+  waitForHealthy,
+  type LogEntry,
+  type LogQueryOptions,
+} from "@composio/ao-core";
 import { findWebDir, buildDashboardEnv } from "../lib/web-dir.js";
 import {
   cleanNextCache,
@@ -294,52 +304,54 @@ export function registerDashboard(program: Command): void {
     .option("-p, --port <port>", "Port to listen on")
     .option("--clean", "Clean .next cache before restarting")
     .option("--no-open", "Don't open browser after restart")
-    .action(async (opts: { port?: string; clean?: boolean; open?: boolean }) => {
+    .option("--wait", "Wait for dashboard to be healthy before exiting")
+    .action(async (opts: { port?: string; clean?: boolean; open?: boolean; wait?: boolean }) => {
       try {
         const config = loadConfig();
         const port = opts.port ? parseInt(opts.port, 10) : (config.port ?? 3000);
         const logDir = resolveLogDir();
         const webDir = findWebDir();
 
-        // 1. Find and kill existing dashboard
-        let pid: string | null = null;
-
-        // Try PID file first
-        if (logDir) {
-          const filePid = readDashboardPid(logDir);
-          if (filePid) pid = String(filePid);
+        if (!logDir) {
+          console.error(chalk.red("No log directory found. Is a project configured?"));
+          process.exit(1);
         }
 
-        // Fallback to lsof
-        if (!pid) {
-          pid = await findRunningDashboardPid(port);
-        }
-
-        if (pid) {
-          console.log(chalk.dim(`Stopping dashboard (PID ${pid}) on port ${port}...`));
-          try {
-            process.kill(parseInt(pid, 10), "SIGTERM");
-          } catch {
-            // Process already exited
-          }
-          await waitForPortFree(port, 5000);
-          if (logDir) removeDashboardPid(logDir);
-          console.log(chalk.green("Dashboard stopped."));
-        } else {
-          console.log(chalk.dim("No running dashboard found."));
-        }
-
-        // 2. Optionally clean .next cache
-        if (opts.clean) {
-          await cleanNextCache(webDir);
-        }
-
-        // 3. Restart
-        await startDashboardProcess(port, webDir, config.configPath, logDir, {
-          ...opts,
-          terminalPort: config.terminalPort,
-          directTerminalPort: config.directTerminalPort,
+        // Use the core restartDashboard function
+        const result = await restartDashboard({
+          clean: opts.clean,
+          port,
+          webDir,
+          logDir,
+          configPath: config.configPath,
+          onStatus: (msg) => console.log(chalk.dim(msg)),
         });
+
+        if (result.pid) {
+          console.log(chalk.green(`Dashboard restarted (PID ${result.pid}) on port ${port}`));
+        } else {
+          console.error(chalk.red("Failed to start dashboard."));
+          process.exit(1);
+        }
+
+        // Optionally wait for healthy
+        if (opts.wait) {
+          console.log(chalk.dim("Waiting for dashboard to be ready..."));
+          const healthy = await waitForHealthy(port, 30_000);
+          if (healthy) {
+            console.log(chalk.green("Dashboard is healthy."));
+          } else {
+            console.error(chalk.yellow("Dashboard did not become healthy within 30s."));
+          }
+        }
+
+        // Open browser if requested
+        if (opts.open !== false && result.pid) {
+          setTimeout(() => {
+            const browser = spawn("open", [`http://localhost:${port}`], { stdio: "ignore" });
+            browser.on("error", () => {});
+          }, opts.wait ? 0 : 3000);
+        }
       } catch (err) {
         console.error(chalk.red("Error:"), err instanceof Error ? err.message : String(err));
         process.exit(1);
