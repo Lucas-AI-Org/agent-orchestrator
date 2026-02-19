@@ -15,7 +15,7 @@ import {
   type WorkspaceHooksConfig,
 } from "@composio/ao-core";
 import { execFile } from "node:child_process";
-import { readdir, readFile, stat, writeFile, mkdir, chmod } from "node:fs/promises";
+import { readdir, readFile, stat, open, writeFile, mkdir, chmod } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
@@ -254,21 +254,38 @@ interface JsonlLine {
  * Now uses the shared readLastJsonlEntry utility from @composio/ao-core.
  */
 
-/** Parse JSONL file into lines (skipping invalid JSON) */
-async function parseJsonlFile(filePath: string): Promise<JsonlLine[]> {
+/**
+ * Parse only the last `maxBytes` of a JSONL file.
+ * Summaries and recent activity are always near the end, so reading the whole
+ * file (which can be 100MB+) is wasteful. The first line is skipped since it
+ * may be truncated at the read boundary.
+ */
+async function parseJsonlFileTail(filePath: string, maxBytes = 131_072): Promise<JsonlLine[]> {
   let content: string;
   try {
-    content = await readFile(filePath, "utf-8");
+    const handle = await open(filePath, "r");
+    try {
+      const { size } = await handle.stat();
+      const offset = Math.max(0, size - maxBytes);
+      const length = size - offset;
+      const buffer = Buffer.allocUnsafe(length);
+      await handle.read(buffer, 0, length, offset);
+      content = buffer.toString("utf-8");
+    } finally {
+      await handle.close();
+    }
   } catch {
     return [];
   }
+  // Skip potentially truncated first line
+  const firstNewline = content.indexOf("\n");
+  const safeContent = firstNewline >= 0 ? content.slice(firstNewline + 1) : content;
   const lines: JsonlLine[] = [];
-  for (const line of content.split("\n")) {
+  for (const line of safeContent.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     try {
       const parsed: unknown = JSON.parse(trimmed);
-      // Skip non-object values (null, numbers, strings, arrays)
       if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
         lines.push(parsed as JsonlLine);
       }
@@ -685,17 +702,8 @@ function createClaudeCodeAgent(): Agent {
       const sessionFile = await findLatestSessionFile(projectDir);
       if (!sessionFile) return null;
 
-      // Get file modification time
-      let lastLogModified: Date | undefined;
-      try {
-        const fileStat = await stat(sessionFile);
-        lastLogModified = fileStat.mtime;
-      } catch {
-        // Ignore stat errors
-      }
-
-      // Parse the JSONL
-      const lines = await parseJsonlFile(sessionFile);
+      // Parse only the tail — summaries are always near the end, files can be 100MB+
+      const lines = await parseJsonlFileTail(sessionFile);
       if (lines.length === 0) return null;
 
       // Extract session ID from filename

@@ -55,7 +55,7 @@ beforeEach(() => {
     getLaunchCommand: vi.fn().mockReturnValue("mock-agent --start"),
     getEnvironment: vi.fn().mockReturnValue({ AGENT_VAR: "1" }),
     detectActivity: vi.fn().mockReturnValue("active"),
-    getActivityState: vi.fn().mockResolvedValue("active"),
+    getActivityState: vi.fn().mockResolvedValue({ state: "active" }),
     isProcessRunning: vi.fn().mockResolvedValue(true),
     getSessionInfo: vi.fn().mockResolvedValue(null),
   };
@@ -421,7 +421,7 @@ describe("list", () => {
   it("detects activity using agent-native mechanism", async () => {
     const agentWithState: Agent = {
       ...mockAgent,
-      getActivityState: vi.fn().mockResolvedValue("active"),
+      getActivityState: vi.fn().mockResolvedValue({ state: "active" }),
     };
     const registryWithState: PluginRegistry = {
       ...mockRegistry,
@@ -535,7 +535,7 @@ describe("get", () => {
   it("detects activity using agent-native mechanism", async () => {
     const agentWithState: Agent = {
       ...mockAgent,
-      getActivityState: vi.fn().mockResolvedValue("idle"),
+      getActivityState: vi.fn().mockResolvedValue({ state: "idle" }),
     };
     const registryWithState: PluginRegistry = {
       ...mockRegistry,
