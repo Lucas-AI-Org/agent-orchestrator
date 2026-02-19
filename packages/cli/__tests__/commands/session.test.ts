@@ -29,6 +29,7 @@ const {
   mockDetectPR,
   mockGetCISummary,
   mockGetAutomatedComments,
+  mockGetSCM,
 } = vi.hoisted(() => ({
   mockTmux: vi.fn(),
   mockGit: vi.fn(),
@@ -48,6 +49,7 @@ const {
   mockDetectPR: vi.fn(),
   mockGetCISummary: vi.fn(),
   mockGetAutomatedComments: vi.fn(),
+  mockGetSCM: vi.fn(),
 }));
 
 vi.mock("../../src/lib/shell.js", () => ({
@@ -83,26 +85,7 @@ vi.mock("../../src/lib/create-session-manager.js", () => ({
 }));
 
 vi.mock("../../src/lib/plugins.js", () => ({
-  getSCM: () => ({
-    name: "github",
-    detectPR: mockDetectPR,
-    getCISummary: mockGetCISummary,
-    getAutomatedComments: mockGetAutomatedComments,
-    getReviewDecision: vi.fn().mockResolvedValue("none"),
-    getPendingComments: vi.fn().mockResolvedValue([]),
-    getCIChecks: vi.fn().mockResolvedValue([]),
-    getReviews: vi.fn().mockResolvedValue([]),
-    getMergeability: vi.fn().mockResolvedValue({
-      mergeable: true,
-      ciPassing: true,
-      approved: false,
-      noConflicts: true,
-      blockers: [],
-    }),
-    getPRState: vi.fn().mockResolvedValue("open"),
-    mergePR: vi.fn(),
-    closePR: vi.fn(),
-  }),
+  getSCM: (...args: unknown[]) => mockGetSCM(...args),
 }));
 
 /** Parse a key=value metadata file into a Record<string, string>. */
@@ -213,6 +196,29 @@ beforeEach(() => {
   mockSessionManager.get.mockReset();
   mockSessionManager.spawn.mockReset();
   mockSessionManager.send.mockReset();
+  mockGetSCM.mockReset();
+
+  // Default: getSCM returns a valid mock SCM
+  mockGetSCM.mockReturnValue({
+    name: "github",
+    detectPR: mockDetectPR,
+    getCISummary: mockGetCISummary,
+    getAutomatedComments: mockGetAutomatedComments,
+    getReviewDecision: vi.fn().mockResolvedValue("none"),
+    getPendingComments: vi.fn().mockResolvedValue([]),
+    getCIChecks: vi.fn().mockResolvedValue([]),
+    getReviews: vi.fn().mockResolvedValue([]),
+    getMergeability: vi.fn().mockResolvedValue({
+      mergeable: true,
+      ciPassing: true,
+      approved: false,
+      noConflicts: true,
+      blockers: [],
+    }),
+    getPRState: vi.fn().mockResolvedValue("open"),
+    mergePR: vi.fn(),
+    closePR: vi.fn(),
+  });
 
   // Default: list reads from sessionsDir
   mockSessionManager.list.mockImplementation(async () => {
@@ -720,5 +726,37 @@ describe("session table", () => {
     const secondData = dataLines.filter((l) => l.includes("app-"))[1];
     expect(firstData).toContain("app-1");
     expect(secondData).toContain("app-3");
+  });
+
+  it("handles unknown SCM plugin without crashing", async () => {
+    mockGetSCM.mockImplementation(() => {
+      throw new Error("Unknown SCM plugin: bad-scm");
+    });
+
+    mockSessionManager.list.mockResolvedValue([
+      {
+        id: "app-1",
+        projectId: "my-app",
+        status: "working",
+        activity: "active",
+        branch: "feat/scm-err",
+        issueId: null,
+        pr: null,
+        workspacePath: null,
+        runtimeHandle: null,
+        agentInfo: null,
+        createdAt: new Date(),
+        lastActivityAt: new Date(),
+        metadata: { pr: "https://github.com/org/my-app/pull/5" },
+      } satisfies Session,
+    ]);
+
+    await program.parseAsync(["node", "test", "session", "table"]);
+
+    const output = consoleSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    // Should still show session with metadata-fallback PR data
+    expect(output).toContain("app-1");
+    expect(output).toContain("#5");
+    expect(output).toContain("-"); // CI unknown (no SCM)
   });
 });

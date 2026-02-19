@@ -49,7 +49,6 @@ async function gatherSessionInfo(
   let branch = session.branch;
   const status = session.status;
   const summary = session.metadata["summary"] ?? null;
-  const prUrl = session.metadata["pr"] ?? null;
   const issue = session.issueId;
 
   // Get live branch from worktree if available
@@ -77,7 +76,7 @@ async function gatherSessionInfo(
 
   // Fetch PR, CI, and review data from SCM
   const project = projectConfig.projects[session.projectId];
-  const { prNumber, prInfo } = await detectSessionPR(session, scm, project);
+  const { prNumber, prUrl, prInfo } = await detectSessionPR(session, scm, project);
   let ciStatus: CIStatus | null = null;
   let reviewDecision: ReviewDecision | null = null;
   let pendingThreads: number | null = null;
@@ -100,7 +99,7 @@ async function gatherSessionInfo(
     status,
     summary,
     claudeSummary,
-    pr: prUrl,
+    pr: prUrl || null,
     prNumber,
     issue,
     lastActivity,

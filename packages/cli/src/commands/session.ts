@@ -3,6 +3,7 @@ import type { Command } from "commander";
 import {
   type Session,
   type CIStatus,
+  type SCM,
   type OrchestratorConfig,
   loadConfig,
   SessionNotRestorableError,
@@ -267,7 +268,14 @@ async function gatherTableRow(
   port: number,
 ): Promise<TableRow> {
   const project = config.projects[session.projectId];
-  const scm = project ? getSCM(config, session.projectId) : null;
+  let scm: SCM | null = null;
+  if (project) {
+    try {
+      scm = getSCM(config, session.projectId);
+    } catch {
+      // Unknown/misconfigured SCM plugin — proceed without SCM data
+    }
+  }
 
   const { prNumber, prUrl, prInfo } = await detectSessionPR(session, scm, project);
   const prLabel = prNumber ? `#${prNumber}` : "-";
