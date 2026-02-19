@@ -683,4 +683,30 @@ describe("status command", () => {
     const parsed = JSON.parse(jsonCalls);
     expect(parsed[0].activity).toBe("exited");
   });
+
+  it("handles session with no branch (detectPR still called)", async () => {
+    // Session with NO branch and NO worktree — exercises the code path
+    // where the old status.ts had `if (branch)` guard before SCM detectPR.
+    // After refactoring to shared helper, detectPR is called unconditionally.
+    writeFileSync(join(sessionsDir, "app-1"), "status=working\n");
+
+    mockTmux.mockImplementation(async (...args: string[]) => {
+      if (args[0] === "list-sessions") return "app-1";
+      if (args[0] === "display-message") return null;
+      return null;
+    });
+    mockGit.mockResolvedValue(null);
+    mockDetectPR.mockResolvedValue(null);
+
+    await program.parseAsync(["node", "test", "status", "--json"]);
+
+    const jsonCalls = consoleSpy.mock.calls.map((c) => c[0]).join("");
+    const parsed = JSON.parse(jsonCalls);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].branch).toBeNull();
+    expect(parsed[0].prNumber).toBeNull();
+    expect(parsed[0].ciStatus).toBeNull();
+    // detectPR should still be called (shared helper doesn't gate on branch)
+    expect(mockDetectPR).toHaveBeenCalled();
+  });
 });
