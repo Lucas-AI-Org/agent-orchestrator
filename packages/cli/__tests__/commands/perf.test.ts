@@ -1,27 +1,66 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ParsedRequest } from "../../src/lib/perf-utils.js";
 
-const { mockPercentile, mockNormalizeRoutePath, mockResolveLogDir, mockLoadRequests } = vi.hoisted(
-  () => ({
-    mockPercentile: vi.fn((sorted: number[], p: number) => {
+const { mockPercentile, mockResolveLogDir, mockLoadRequests, mockComputeApiStats } =
+  vi.hoisted(() => {
+    const mockPercentile = vi.fn((sorted: number[], p: number) => {
       if (sorted.length === 0) return 0;
       const idx = Math.ceil((p / 100) * sorted.length) - 1;
       return sorted[Math.max(0, idx)];
-    }),
-    mockNormalizeRoutePath: vi.fn(
+    });
+    const mockNormalizeRoutePath = vi.fn(
       (path: string) =>
         path
           .replace(/\/sessions\/[^/]+/g, "/sessions/:id")
           .replace(/\/prs\/[^/]+/g, "/prs/:id"),
-    ),
-    mockResolveLogDir: vi.fn(() => "/tmp/logs"),
-    mockLoadRequests: vi.fn(),
-  }),
-);
+    );
+
+    // Inline implementation that mirrors computeApiStats in core.
+    // Needed because perf.ts delegates route grouping to computeApiStats.
+    const mockComputeApiStats = vi.fn(
+      (entries: { method: string; path: string; statusCode: number; durationMs: number; error?: string; cacheStats?: unknown }[]) => {
+        const byRoute = new Map<string, typeof entries>();
+        for (const e of entries) {
+          const key = `${e.method} ${mockNormalizeRoutePath(e.path)}`;
+          const arr = byRoute.get(key) ?? [];
+          arr.push(e);
+          byRoute.set(key, arr);
+        }
+        const routes: Record<string, { count: number; avgMs: number; p50Ms: number; p95Ms: number; p99Ms: number; errors: number }> = {};
+        for (const [route, logs] of byRoute) {
+          const durations = logs.map((l) => l.durationMs).sort((a, b) => a - b);
+          routes[route] = {
+            count: logs.length,
+            avgMs: Math.round(durations.reduce((s, d) => s + d, 0) / durations.length),
+            p50Ms: mockPercentile(durations, 50),
+            p95Ms: mockPercentile(durations, 95),
+            p99Ms: mockPercentile(durations, 99),
+            errors: logs.filter((l) => l.error !== undefined || l.statusCode >= 400).length,
+          };
+        }
+        const slowest = [...entries].sort((a, b) => b.durationMs - a.durationMs).slice(0, 10);
+        let latestCacheStats = null;
+        for (let i = entries.length - 1; i >= 0; i--) {
+          if ((entries[i] as { cacheStats?: unknown }).cacheStats) {
+            latestCacheStats = (entries[i] as { cacheStats?: unknown }).cacheStats;
+            break;
+          }
+        }
+        return { routes, slowest, latestCacheStats };
+      },
+    );
+
+    return {
+      mockPercentile,
+      mockComputeApiStats,
+      mockResolveLogDir: vi.fn(() => "/tmp/logs"),
+      mockLoadRequests: vi.fn(),
+    };
+  });
 
 vi.mock("@composio/ao-core", () => ({
   percentile: mockPercentile,
-  normalizeRoutePath: mockNormalizeRoutePath,
+  computeApiStats: mockComputeApiStats,
 }));
 
 vi.mock("../../src/lib/perf-utils.js", () => ({

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import type { LogEntry } from "../types.js";
-import { readLogs, readLogsFromDir, tailLogs } from "../log-reader.js";
+import { readLogs, readLogsFromDir, tailLogs, parseApiLogs, computeApiStats, type ApiLogEntry } from "../log-reader.js";
 
 let testDir: string;
 
@@ -694,5 +694,191 @@ describe("tailLogs", () => {
     const result = tailLogs(filePath, 1);
     expect(result).toHaveLength(1);
     expect(result[0].data).toEqual({ key: "value", count: 42 });
+  });
+});
+
+// ── parseApiLogs ─────────────────────────────────────────────────────────────
+
+describe("parseApiLogs", () => {
+  it("parses api.jsonl entries into ApiLogEntry objects", () => {
+    const entries: LogEntry[] = [
+      makeEntry({
+        source: "api",
+        sessionId: "ao-1",
+        data: { method: "GET", path: "/api/sessions", statusCode: 200, durationMs: 50 },
+      }),
+    ];
+    writeJsonl(join(testDir, "api.jsonl"), entries);
+
+    const result = parseApiLogs(testDir);
+    expect(result).toHaveLength(1);
+    expect(result[0].method).toBe("GET");
+    expect(result[0].path).toBe("/api/sessions");
+    expect(result[0].statusCode).toBe(200);
+    expect(result[0].durationMs).toBe(50);
+    expect(result[0].sessionId).toBe("ao-1");
+  });
+
+  it("skips entries missing method or path", () => {
+    const entries: LogEntry[] = [
+      makeEntry({ source: "api", data: { statusCode: 200, durationMs: 10 } }),
+      makeEntry({ source: "api", data: { method: "GET", statusCode: 200, durationMs: 10 } }),
+      makeEntry({ source: "api", data: { method: "GET", path: "/api/health", statusCode: 200, durationMs: 10 } }),
+    ];
+    writeJsonl(join(testDir, "api.jsonl"), entries);
+
+    const result = parseApiLogs(testDir);
+    expect(result).toHaveLength(1);
+    expect(result[0].path).toBe("/api/health");
+  });
+
+  it("parses optional error, timings, and cacheStats fields", () => {
+    const entries: LogEntry[] = [
+      makeEntry({
+        source: "api",
+        data: {
+          method: "POST",
+          path: "/api/spawn",
+          statusCode: 500,
+          durationMs: 200,
+          error: "spawn failed",
+          timings: { serviceInit: 5, prEnrichment: 150 },
+          cacheStats: { hits: 10, misses: 2, hitRate: 0.83, size: 12 },
+        },
+      }),
+    ];
+    writeJsonl(join(testDir, "api.jsonl"), entries);
+
+    const result = parseApiLogs(testDir);
+    expect(result[0].error).toBe("spawn failed");
+    expect(result[0].timings).toEqual({ serviceInit: 5, prEnrichment: 150 });
+    expect(result[0].cacheStats).toEqual({ hits: 10, misses: 2, hitRate: 0.83, size: 12 });
+  });
+
+  it("filters by route when opts.route is provided", () => {
+    const entries: LogEntry[] = [
+      makeEntry({ source: "api", data: { method: "GET", path: "/api/sessions", statusCode: 200, durationMs: 10 } }),
+      makeEntry({ source: "api", data: { method: "GET", path: "/api/health", statusCode: 200, durationMs: 5 } }),
+    ];
+    writeJsonl(join(testDir, "api.jsonl"), entries);
+
+    const result = parseApiLogs(testDir, { route: "sessions" });
+    expect(result).toHaveLength(1);
+    expect(result[0].path).toBe("/api/sessions");
+  });
+
+  it("returns empty array when no api.jsonl exists", () => {
+    const result = parseApiLogs(testDir);
+    expect(result).toEqual([]);
+  });
+});
+
+// ── computeApiStats ───────────────────────────────────────────────────────────
+
+function makeApiEntry(overrides: Partial<ApiLogEntry> = {}): ApiLogEntry {
+  return {
+    ts: "2026-01-15T12:00:00Z",
+    method: "GET",
+    path: "/api/sessions",
+    sessionId: null,
+    statusCode: 200,
+    durationMs: 100,
+    ...overrides,
+  };
+}
+
+describe("computeApiStats", () => {
+  it("returns empty routes and slowest for empty input", () => {
+    const result = computeApiStats([]);
+    expect(result.routes).toEqual({});
+    expect(result.slowest).toEqual([]);
+    expect(result.latestCacheStats).toBeNull();
+  });
+
+  it("groups entries by normalized route key", () => {
+    const entries = [
+      makeApiEntry({ path: "/api/sessions/abc", durationMs: 100 }),
+      makeApiEntry({ path: "/api/sessions/def", durationMs: 200 }),
+      makeApiEntry({ path: "/api/health", durationMs: 5 }),
+    ];
+
+    const result = computeApiStats(entries);
+    expect(result.routes["GET /api/sessions/:id"]).toBeDefined();
+    expect(result.routes["GET /api/sessions/:id"].count).toBe(2);
+    expect(result.routes["GET /api/health"]).toBeDefined();
+    expect(result.routes["GET /api/health"].count).toBe(1);
+  });
+
+  it("computes correct avgMs, p50Ms, p95Ms, p99Ms", () => {
+    const durations = [100, 200, 300, 400];
+    const entries = durations.map((durationMs) => makeApiEntry({ durationMs }));
+
+    const result = computeApiStats(entries);
+    const route = result.routes["GET /api/sessions"];
+    expect(route.count).toBe(4);
+    expect(route.avgMs).toBe(250); // (100+200+300+400)/4
+    expect(route.p50Ms).toBeGreaterThanOrEqual(100);
+    expect(route.p50Ms).toBeLessThanOrEqual(200);
+    expect(route.p95Ms).toBeGreaterThanOrEqual(300);
+    expect(route.p99Ms).toBeGreaterThanOrEqual(300);
+  });
+
+  it("counts errors for status >= 400", () => {
+    const entries = [
+      makeApiEntry({ statusCode: 200 }),
+      makeApiEntry({ statusCode: 400 }),
+      makeApiEntry({ statusCode: 500 }),
+    ];
+
+    const result = computeApiStats(entries);
+    expect(result.routes["GET /api/sessions"].errors).toBe(2);
+  });
+
+  it("counts errors when error field is present regardless of status code", () => {
+    const entries = [
+      makeApiEntry({ statusCode: 200, error: "something failed" }),
+    ];
+
+    const result = computeApiStats(entries);
+    expect(result.routes["GET /api/sessions"].errors).toBe(1);
+  });
+
+  it("separates routes by HTTP method", () => {
+    const entries = [
+      makeApiEntry({ method: "GET", path: "/api/sessions" }),
+      makeApiEntry({ method: "POST", path: "/api/sessions" }),
+    ];
+
+    const result = computeApiStats(entries);
+    expect(result.routes["GET /api/sessions"]).toBeDefined();
+    expect(result.routes["POST /api/sessions"]).toBeDefined();
+  });
+
+  it("returns top 10 slowest requests sorted descending", () => {
+    const entries = Array.from({ length: 15 }, (_, i) =>
+      makeApiEntry({ durationMs: (i + 1) * 10 }),
+    );
+
+    const result = computeApiStats(entries);
+    expect(result.slowest).toHaveLength(10);
+    expect(result.slowest[0].durationMs).toBe(150); // fastest of top 10: 15*10
+    expect(result.slowest[0].durationMs).toBeGreaterThan(result.slowest[1].durationMs);
+  });
+
+  it("returns latestCacheStats from most recent entry with cacheStats", () => {
+    const entries = [
+      makeApiEntry({ cacheStats: { hits: 1, misses: 1, hitRate: 0.5, size: 2 } }),
+      makeApiEntry({}),
+      makeApiEntry({ cacheStats: { hits: 20, misses: 5, hitRate: 0.8, size: 25 } }),
+    ];
+
+    const result = computeApiStats(entries);
+    expect(result.latestCacheStats).toEqual({ hits: 20, misses: 5, hitRate: 0.8, size: 25 });
+  });
+
+  it("returns null latestCacheStats when no entries have cacheStats", () => {
+    const entries = [makeApiEntry(), makeApiEntry()];
+    const result = computeApiStats(entries);
+    expect(result.latestCacheStats).toBeNull();
   });
 });

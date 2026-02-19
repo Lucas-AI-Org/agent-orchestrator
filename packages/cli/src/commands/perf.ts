@@ -11,7 +11,7 @@
 
 import chalk from "chalk";
 import type { Command } from "commander";
-import { percentile, normalizeRoutePath } from "@composio/ao-core";
+import { percentile, computeApiStats } from "@composio/ao-core";
 import { padCol, parseSinceArg, formatMs } from "../lib/format.js";
 import { loadRequests, resolveLogDir, type ParsedRequest } from "../lib/perf-utils.js";
 
@@ -41,32 +41,10 @@ export function registerPerf(program: Command): void {
           return;
         }
 
-        // Group by normalized route
-        const byRoute = new Map<string, number[]>();
-        const errorsByRoute = new Map<string, number>();
-        for (const req of requests) {
-          const key = `${req.method} ${normalizeRoutePath(req.path)}`;
-          const durations = byRoute.get(key) ?? [];
-          durations.push(req.durationMs);
-          byRoute.set(key, durations);
-          if (req.error || req.statusCode >= 400) {
-            errorsByRoute.set(key, (errorsByRoute.get(key) ?? 0) + 1);
-          }
-        }
+        const { routes } = computeApiStats(requests);
 
         if (opts.json) {
-          const result: Record<string, unknown> = {};
-          for (const [route, durations] of byRoute) {
-            durations.sort((a, b) => a - b);
-            result[route] = {
-              count: durations.length,
-              p50: percentile(durations, 50),
-              p95: percentile(durations, 95),
-              p99: percentile(durations, 99),
-              errors: errorsByRoute.get(route) ?? 0,
-            };
-          }
-          console.log(JSON.stringify(result, null, 2));
+          console.log(JSON.stringify(routes, null, 2));
           return;
         }
 
@@ -85,23 +63,17 @@ export function registerPerf(program: Command): void {
         );
         console.log(chalk.dim("  " + "─".repeat(70)));
 
-        const sorted = [...byRoute.entries()].sort((a, b) => {
-          const medA = percentile(a[1].sort((x, y) => x - y), 95);
-          const medB = percentile(b[1].sort((x, y) => x - y), 95);
-          return medB - medA;
-        });
+        const sorted = Object.entries(routes).sort((a, b) => b[1].p95Ms - a[1].p95Ms);
 
-        for (const [route, durations] of sorted) {
-          durations.sort((a, b) => a - b);
-          const errors = errorsByRoute.get(route) ?? 0;
+        for (const [route, stats] of sorted) {
           console.log(
             "  " +
             padCol(chalk.cyan(route), COL.route) +
-            padCol(String(durations.length), COL.count) +
-            padCol(formatMs(percentile(durations, 50)), COL.p50) +
-            padCol(formatMs(percentile(durations, 95)), COL.p95) +
-            padCol(formatMs(percentile(durations, 99)), COL.p99) +
-            (errors > 0 ? chalk.red(String(errors)) : chalk.dim("0")),
+            padCol(String(stats.count), COL.count) +
+            padCol(formatMs(stats.p50Ms), COL.p50) +
+            padCol(formatMs(stats.p95Ms), COL.p95) +
+            padCol(formatMs(stats.p99Ms), COL.p99) +
+            (stats.errors > 0 ? chalk.red(String(stats.errors)) : chalk.dim("0")),
           );
         }
         console.log(chalk.dim(`\n  ${requests.length} total requests`));

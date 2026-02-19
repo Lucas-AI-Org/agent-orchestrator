@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
-import {
-  resolveProjectLogDir,
-  readLogsFromDir,
-  loadConfig,
-  percentile,
-  normalizeRoutePath,
-} from "@composio/ao-core";
+import { resolveProjectLogDir, loadConfig } from "@composio/ao-core";
+import { getRequestStats } from "../../../lib/request-logger.js";
 
 function resolveLogDir(): string {
   const dir = resolveProjectLogDir(loadConfig());
@@ -27,74 +22,16 @@ export async function GET(request: Request) {
     const route = searchParams.get("route");
 
     const logDir = resolveLogDir();
-    const entries = readLogsFromDir(logDir, "api", {
-      source: "api",
+    const stats = getRequestStats(logDir, {
       ...(since && { since: new Date(since) }),
+      ...(route && { route }),
     });
 
-    // Parse and group by route
-    const byRoute = new Map<string, number[]>();
-    const errorsByRoute = new Map<string, number>();
-    const slowest: Array<{
-      ts: string;
-      method: string;
-      path: string;
-      durationMs: number;
-      timings?: Record<string, number>;
-    }> = [];
-
-    let latestCacheStats: unknown = null;
-
-    for (const entry of entries) {
-      const data = entry.data ?? {};
-      if (!data["method"] || !data["path"]) continue;
-
-      const method = String(data["method"]);
-      const path = String(data["path"]);
-      const durationMs = Number(data["durationMs"]) || 0;
-
-      if (route && !path.includes(route)) continue;
-
-      const key = `${method} ${normalizeRoutePath(path)}`;
-      const durations = byRoute.get(key) ?? [];
-      durations.push(durationMs);
-      byRoute.set(key, durations);
-
-      if (data["error"] || (Number(data["statusCode"]) || 0) >= 400) {
-        errorsByRoute.set(key, (errorsByRoute.get(key) ?? 0) + 1);
-      }
-
-      if (data["cacheStats"]) {
-        latestCacheStats = data["cacheStats"];
-      }
-
-      slowest.push({ ts: entry.ts, method, path, durationMs,
-        timings: data["timings"] as Record<string, number> | undefined,
-      });
-    }
-
-    // Build route stats
-    const routes: Record<string, unknown> = {};
-    for (const [routeKey, durations] of byRoute) {
-      durations.sort((a, b) => a - b);
-      routes[routeKey] = {
-        count: durations.length,
-        avgMs: Math.round(durations.reduce((s, d) => s + d, 0) / durations.length),
-        p50Ms: percentile(durations, 50),
-        p95Ms: percentile(durations, 95),
-        p99Ms: percentile(durations, 99),
-        errors: errorsByRoute.get(routeKey) ?? 0,
-      };
-    }
-
-    // Top 10 slowest
-    slowest.sort((a, b) => b.durationMs - a.durationMs);
-
     return NextResponse.json({
-      routes,
-      slowest: slowest.slice(0, 10),
-      cacheStats: latestCacheStats,
-      totalRequests: entries.length,
+      routes: stats.routes,
+      slowest: stats.slowest,
+      cacheStats: stats.latestCacheStats,
+      totalRequests: Object.values(stats.routes).reduce((s, r) => s + r.count, 0),
     });
   } catch (err) {
     return NextResponse.json(

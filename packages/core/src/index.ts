@@ -89,8 +89,8 @@ export { LogWriter } from "./log-writer.js";
 export type { LogWriterOptions } from "./log-writer.js";
 
 // Log reader — query and filter JSONL logs
-export { readLogs, readLogsFromDir, tailLogs, parseApiLogs } from "./log-reader.js";
-export type { ApiLogEntry } from "./log-reader.js";
+export { readLogs, readLogsFromDir, tailLogs, parseApiLogs, computeApiStats } from "./log-reader.js";
+export type { ApiLogEntry, RouteStats, ApiPerfResult } from "./log-reader.js";
 
 // Session report card — per-session metrics
 export { generateReportCard } from "./session-report-card.js";

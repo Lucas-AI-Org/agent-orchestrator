@@ -5,7 +5,8 @@
  * each request's duration and status to the API request log.
  */
 
-import { logApiRequest, type RequestLog } from "./request-logger.js";
+import type { ApiLogEntry } from "@composio/ao-core";
+import { logApiRequest } from "./request-logger.js";
 
 type RouteHandler = (req: Request, ctx?: unknown) => Promise<Response>;
 
@@ -42,7 +43,7 @@ export function withTiming(handler: RouteHandler, _routeName: string): RouteHand
 
     const durationMs = Date.now() - start;
 
-    const log: RequestLog = {
+    const log: ApiLogEntry = {
       ts: new Date().toISOString(),
       method,
       path,

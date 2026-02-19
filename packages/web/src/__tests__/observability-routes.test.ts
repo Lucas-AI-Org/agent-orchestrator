@@ -8,26 +8,88 @@ const mockResolveProjectLogDir = vi.fn();
 const mockLoadConfig = vi.fn();
 const mockLogWriterAppend = vi.fn();
 
-vi.mock("@composio/ao-core", () => ({
-  resolveProjectLogDir: (...args: unknown[]) => mockResolveProjectLogDir(...args),
-  readLogsFromDir: (...args: unknown[]) => mockReadLogsFromDir(...args),
-  tailLogs: (...args: unknown[]) => mockTailLogs(...args),
-  loadConfig: (...args: unknown[]) => mockLoadConfig(...args),
-  percentile: (sorted: number[], p: number) => {
+vi.mock("@composio/ao-core", () => {
+  function percentile(sorted: number[], p: number): number {
     if (sorted.length === 0) return 0;
     const idx = Math.ceil((p / 100) * sorted.length) - 1;
     return sorted[Math.max(0, idx)];
-  },
-  normalizeRoutePath: (path: string) =>
-    path
+  }
+  function normalizeRoutePath(path: string): string {
+    return path
       .replace(/\/sessions\/[^/]+/g, "/sessions/:id")
-      .replace(/\/prs\/[^/]+/g, "/prs/:id"),
-  LogWriter: vi.fn().mockImplementation(() => ({
-    append: mockLogWriterAppend,
-    appendLine: vi.fn(),
-    close: vi.fn(),
-  })),
-}));
+      .replace(/\/prs\/[^/]+/g, "/prs/:id");
+  }
+  return {
+    resolveProjectLogDir: (...args: unknown[]) => mockResolveProjectLogDir(...args),
+    readLogsFromDir: (...args: unknown[]) => mockReadLogsFromDir(...args),
+    tailLogs: (...args: unknown[]) => mockTailLogs(...args),
+    loadConfig: (...args: unknown[]) => mockLoadConfig(...args),
+    percentile,
+    normalizeRoutePath,
+    /** Inline implementation of parseApiLogs from core (uses mocked readLogsFromDir). */
+    parseApiLogs: (logDir: string, opts?: { since?: Date; route?: string }) => {
+      const raw = mockReadLogsFromDir(logDir, "api", {
+        source: "api",
+        since: opts?.since,
+      }) as Array<{ ts: string; sessionId?: string | null; data?: Record<string, unknown> }>;
+      const results = [];
+      for (const entry of raw) {
+        const data = entry.data ?? {};
+        if (!data["method"] || !data["path"]) continue;
+        const req = {
+          ts: entry.ts,
+          method: String(data["method"]),
+          path: String(data["path"]),
+          sessionId: entry.sessionId ?? null,
+          statusCode: Number(data["statusCode"]) || 0,
+          durationMs: Number(data["durationMs"]) || 0,
+          error: data["error"] ? String(data["error"]) : undefined,
+          timings: data["timings"] as Record<string, number> | undefined,
+          cacheStats: data["cacheStats"] as { hits: number; misses: number; hitRate: number; size: number } | undefined,
+        };
+        if (opts?.route && !req.path.includes(opts.route)) continue;
+        results.push(req);
+      }
+      return results;
+    },
+    /** Inline implementation of computeApiStats from core. */
+    computeApiStats: (entries: Array<{ method: string; path: string; statusCode: number; durationMs: number; error?: string; cacheStats?: unknown }>) => {
+      const byRoute = new Map<string, typeof entries>();
+      for (const entry of entries) {
+        const key = `${entry.method} ${normalizeRoutePath(entry.path)}`;
+        const arr = byRoute.get(key) ?? [];
+        arr.push(entry);
+        byRoute.set(key, arr);
+      }
+      const routes: Record<string, { count: number; avgMs: number; p50Ms: number; p95Ms: number; p99Ms: number; errors: number }> = {};
+      for (const [route, logs] of byRoute) {
+        const durations = logs.map((l) => l.durationMs).sort((a, b) => a - b);
+        routes[route] = {
+          count: logs.length,
+          avgMs: Math.round(durations.reduce((s, d) => s + d, 0) / durations.length),
+          p50Ms: percentile(durations, 50),
+          p95Ms: percentile(durations, 95),
+          p99Ms: percentile(durations, 99),
+          errors: logs.filter((l) => l.error !== undefined || l.statusCode >= 400).length,
+        };
+      }
+      let latestCacheStats = null;
+      for (let i = entries.length - 1; i >= 0; i--) {
+        if ((entries[i] as { cacheStats?: unknown }).cacheStats) {
+          latestCacheStats = (entries[i] as { cacheStats?: unknown }).cacheStats;
+          break;
+        }
+      }
+      const slowest = [...entries].sort((a, b) => b.durationMs - a.durationMs).slice(0, 10);
+      return { routes, slowest, latestCacheStats };
+    },
+    LogWriter: vi.fn().mockImplementation(() => ({
+      append: mockLogWriterAppend,
+      appendLine: vi.fn(),
+      close: vi.fn(),
+    })),
+  };
+});
 
 // ── Import routes after mocking ─────────────────────────────────────────
 
@@ -437,8 +499,8 @@ describe("GET /api/perf", () => {
     const json = await res.json();
 
     // Only entries whose path includes "sessions" should appear
-    expect(json.totalRequests).toBe(3); // totalRequests is entries.length (all from readLogsFromDir)
-    // But routes should only contain session-related entries
+    expect(json.totalRequests).toBe(2); // 2 session entries passed route filter
+    // Routes should only contain session-related entries
     expect(json.routes["POST /api/spawn"]).toBeUndefined();
     expect(json.routes["GET /api/sessions"]).toBeDefined();
     expect(json.routes["GET /api/sessions/:id"]).toBeDefined();
@@ -558,7 +620,7 @@ describe("GET /api/perf", () => {
     // All entries should be skipped — no routes recorded
     expect(json.routes).toEqual({});
     expect(json.slowest).toEqual([]);
-    expect(json.totalRequests).toBe(4); // entries.length from readLogsFromDir
+    expect(json.totalRequests).toBe(0); // 0 valid entries parsed
   });
 
   it("applies combined since + route filtering", async () => {

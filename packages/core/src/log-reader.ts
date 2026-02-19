@@ -8,6 +8,7 @@
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join, basename } from "node:path";
 import type { LogEntry, LogQueryOptions } from "./types.js";
+import { percentile, normalizeRoutePath } from "./utils.js";
 
 /** Read and filter log entries from a single JSONL file. */
 export function readLogs(filePath: string, opts?: LogQueryOptions): LogEntry[] {
@@ -213,4 +214,60 @@ export function parseApiLogs(
   }
 
   return results;
+}
+
+/** Per-route aggregated performance stats. */
+export interface RouteStats {
+  count: number;
+  avgMs: number;
+  p50Ms: number;
+  p95Ms: number;
+  p99Ms: number;
+  errors: number;
+}
+
+/** Result of computing API performance stats from parsed log entries. */
+export interface ApiPerfResult {
+  routes: Record<string, RouteStats>;
+  slowest: ApiLogEntry[];
+  latestCacheStats: ApiLogEntry["cacheStats"] | null;
+}
+
+/**
+ * Compute per-route performance stats from parsed API log entries.
+ * Shared by `ao perf routes` CLI and the web `/api/perf` route.
+ */
+export function computeApiStats(entries: ApiLogEntry[]): ApiPerfResult {
+  const byRoute = new Map<string, ApiLogEntry[]>();
+  for (const entry of entries) {
+    const key = `${entry.method} ${normalizeRoutePath(entry.path)}`;
+    const existing = byRoute.get(key) ?? [];
+    existing.push(entry);
+    byRoute.set(key, existing);
+  }
+
+  const routes: Record<string, RouteStats> = {};
+  for (const [route, logs] of byRoute) {
+    const durations = logs.map((l) => l.durationMs).sort((a, b) => a - b);
+    routes[route] = {
+      count: logs.length,
+      avgMs: Math.round(durations.reduce((s, d) => s + d, 0) / durations.length),
+      p50Ms: percentile(durations, 50),
+      p95Ms: percentile(durations, 95),
+      p99Ms: percentile(durations, 99),
+      errors: logs.filter((l) => l.error !== undefined || l.statusCode >= 400).length,
+    };
+  }
+
+  let latestCacheStats: ApiLogEntry["cacheStats"] | null = null;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    if (entries[i].cacheStats) {
+      latestCacheStats = entries[i].cacheStats!;
+      break;
+    }
+  }
+
+  const slowest = [...entries].sort((a, b) => b.durationMs - a.durationMs).slice(0, 10);
+
+  return { routes, slowest, latestCacheStats };
 }
