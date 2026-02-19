@@ -34,6 +34,20 @@ export function isPortAvailable(port: number): Promise<boolean> {
 }
 
 /**
+ * Find an available port starting from `base`, scanning upward.
+ * Returns the first free port found, or `base` as fallback.
+ */
+export async function findAvailablePort(base: number): Promise<number> {
+  const MAX_ATTEMPTS = 50;
+  for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    if (await isPortAvailable(base + i)) {
+      return base + i;
+    }
+  }
+  return base;
+}
+
+/**
  * Find a pair of consecutive available ports starting from `base`.
  * Scans upward in steps of 2 (keeping ports paired) until both are free.
  * Returns [terminalPort, directTerminalPort].

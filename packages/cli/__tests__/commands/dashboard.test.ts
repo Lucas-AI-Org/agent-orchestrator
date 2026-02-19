@@ -131,6 +131,40 @@ describe("findProcessWebDir", () => {
   });
 });
 
+describe("looksLikePortInUse pattern matching", () => {
+  // Import the exported function directly
+  let looksLikePortInUse: (stderr: string) => boolean;
+  beforeEach(async () => {
+    const mod = await import("../../src/commands/dashboard.js");
+    looksLikePortInUse = mod.looksLikePortInUse;
+  });
+
+  it("detects Node.js EADDRINUSE error", () => {
+    const stderr = "Error: listen EADDRINUSE: address already in use :::3000";
+    expect(looksLikePortInUse(stderr)).toBe(true);
+  });
+
+  it("detects Next.js port-in-use message", () => {
+    const stderr = "Error: Port 3000 is already in use.";
+    expect(looksLikePortInUse(stderr)).toBe(true);
+  });
+
+  it("detects generic address already in use", () => {
+    const stderr = "listen EADDRINUSE: address already in use 127.0.0.1:9000";
+    expect(looksLikePortInUse(stderr)).toBe(true);
+  });
+
+  it("does not flag unrelated errors", () => {
+    const stderr = "TypeError: Cannot read properties of undefined";
+    expect(looksLikePortInUse(stderr)).toBe(false);
+  });
+
+  it("does not flag normal startup output", () => {
+    const stderr = "ready - started server on 0.0.0.0:3000, url: http://localhost:3000";
+    expect(looksLikePortInUse(stderr)).toBe(false);
+  });
+});
+
 describe("looksLikeStaleBuild pattern matching", () => {
   // We can't import the private function directly, so we replicate the patterns
   // to ensure the detection logic catches the actual error messages seen in production.

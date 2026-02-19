@@ -1,8 +1,13 @@
 # Managing multiple projects with different trackers
 # Shows how to configure multiple repos with different settings
+#
+# TIP: When running `ao start` for multiple projects simultaneously,
+# each needs its own config file with a different `port:` value.
+# Terminal WebSocket ports are auto-detected — no manual config needed.
 
 dataDir: ~/.agent-orchestrator
 worktreeDir: ~/.worktrees
+port: 3000  # Use a different port per project (e.g., 3001 for a second project)
 
 defaults:
   runtime: tmux

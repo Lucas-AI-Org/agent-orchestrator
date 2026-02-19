@@ -22,6 +22,7 @@ import { exec } from "../lib/shell.js";
 import { getSessionManager } from "../lib/create-session-manager.js";
 import { findWebDir, buildDashboardEnv } from "../lib/web-dir.js";
 import { cleanNextCache } from "../lib/dashboard-rebuild.js";
+import { looksLikePortInUse } from "./dashboard.js";
 
 /**
  * Resolve project from config.
@@ -76,9 +77,24 @@ async function startDashboard(
 
   const child = spawn("pnpm", ["run", "dev"], {
     cwd: webDir,
-    stdio: "inherit",
+    stdio: ["inherit", "inherit", "pipe"],
     detached: false,
     env,
+  });
+
+  // Buffer stderr for EADDRINUSE detection while still showing output
+  child.stderr?.on("data", (data: Buffer) => {
+    const text = data.toString();
+    process.stderr.write(data);
+    if (looksLikePortInUse(text)) {
+      console.error(
+        chalk.yellow(
+          `\nPort ${port} is already in use. Either:\n\n` +
+            `  1. Change ${chalk.cyan("port:")} in agent-orchestrator.yaml\n` +
+            `  2. Stop the other process: ${chalk.cyan(`lsof -ti:${port} | xargs kill`)}\n`,
+        ),
+      );
+    }
   });
 
   child.on("error", (err) => {

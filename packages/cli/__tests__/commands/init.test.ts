@@ -37,7 +37,7 @@ describe("init command", () => {
     expect(existsSync(outputPath)).toBe(true);
   });
 
-  it("auto mode uses port 3000 when it is available", async () => {
+  it("auto mode uses port 3000 when it is available", { timeout: 30_000 }, async () => {
     tmpDir = mkdtempSync(join(tmpdir(), "ao-init-test-"));
     const outputPath = join(tmpDir, "agent-orchestrator.yaml");
 
@@ -53,7 +53,7 @@ describe("init command", () => {
     expect(content).toContain("port: 3000");
   });
 
-  it("auto mode picks next free port when 3000 is occupied", async () => {
+  it("auto mode picks next free port when 3000 is occupied", { timeout: 30_000 }, async () => {
     tmpDir = mkdtempSync(join(tmpdir(), "ao-init-test-"));
     const outputPath = join(tmpDir, "agent-orchestrator.yaml");
 

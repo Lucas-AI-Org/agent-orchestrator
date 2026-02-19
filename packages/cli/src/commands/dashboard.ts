@@ -110,9 +110,17 @@ export function registerDashboard(program: Command): void {
       child.on("exit", (code) => {
         if (browserTimer) clearTimeout(browserTimer);
 
-        if (code !== 0 && code !== null && !opts.rebuild) {
+        if (code !== 0 && code !== null) {
           const stderr = stderrChunks.join("");
-          if (looksLikeStaleBuild(stderr)) {
+          if (looksLikePortInUse(stderr)) {
+            console.error(
+              chalk.yellow(
+                `\nPort ${port} is already in use. Either:\n\n` +
+                  `  1. Change ${chalk.cyan("port:")} in agent-orchestrator.yaml\n` +
+                  `  2. Stop the other process: ${chalk.cyan(`lsof -ti:${port} | xargs kill`)}\n`,
+              ),
+            );
+          } else if (!opts.rebuild && looksLikeStaleBuild(stderr)) {
             console.error(
               chalk.yellow(
                 "\nThis looks like a stale build cache issue. Try:\n\n" +
@@ -125,6 +133,18 @@ export function registerDashboard(program: Command): void {
         process.exit(code ?? 0);
       });
     });
+}
+
+/**
+ * Check if stderr output suggests the port is already in use.
+ */
+export function looksLikePortInUse(stderr: string): boolean {
+  const patterns = [
+    /EADDRINUSE/,
+    /address already in use/i,
+    /port.*is.*in use/i,
+  ];
+  return patterns.some((p) => p.test(stderr));
 }
 
 /**
