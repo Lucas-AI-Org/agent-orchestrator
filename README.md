@@ -1,14 +1,14 @@
-<p align="center">
-  <h1 align="center">Agent Orchestrator</h1>
-  <p align="center">Spawn parallel AI coding agents. Monitor from one dashboard. Merge their PRs.</p>
-</p>
+<div align="center">
 
-<p align="center">
-  <a href="https://github.com/ComposioHQ/agent-orchestrator/stargazers"><img src="https://img.shields.io/github/stars/ComposioHQ/agent-orchestrator?style=flat-square&color=f1c40f" alt="Stars"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License"></a>
-  <a href="https://github.com/ComposioHQ/agent-orchestrator/pulls"><img src="https://img.shields.io/badge/PRs_merged-61-brightgreen?style=flat-square" alt="PRs merged"></a>
-  <a href="https://github.com/ComposioHQ/agent-orchestrator/releases/tag/metrics-v1"><img src="https://img.shields.io/badge/test_cases-3%2C288-blue?style=flat-square" alt="Tests"></a>
-</p>
+# Agent Orchestrator
+
+Spawn parallel AI coding agents. Monitor from one dashboard. Merge their PRs.
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![PRs merged](https://img.shields.io/badge/PRs_merged-61-brightgreen?style=flat-square)](https://github.com/ComposioHQ/agent-orchestrator/pulls?q=is%3Amerged)
+[![Tests](https://img.shields.io/badge/test_cases-3%2C288-blue?style=flat-square)](https://github.com/ComposioHQ/agent-orchestrator/releases/tag/metrics-v1)
+
+</div>
 
 ---
 
