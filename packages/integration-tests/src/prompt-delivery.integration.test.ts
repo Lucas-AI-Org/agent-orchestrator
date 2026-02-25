@@ -51,22 +51,10 @@ async function findClaudeBinary(): Promise<string | null> {
   }
 }
 
-/** Check if Claude has interactive auth configured (not just ANTHROPIC_API_KEY). */
-async function hasInteractiveAuth(): Promise<boolean> {
-  try {
-    const { stdout } = await execFileAsync("claude", ["auth", "status"], {
-      timeout: 10_000,
-    });
-    const status = JSON.parse(stdout) as { loggedIn?: boolean };
-    return status.loggedIn === true;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Wait for Claude Code's TUI to be ready for input.
- * Polls the tmux pane for the prompt character (❯) that Claude shows when idle.
+ * Polls the tmux pane for Claude's prompt character (❯) on its own line.
+ * Returns false if the OAuth/login screen is detected instead.
  */
 async function waitForTuiReady(
   sessionName: string,
@@ -75,8 +63,18 @@ async function waitForTuiReady(
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const output = await capturePane(sessionName, CAPTURE_LINES);
-    // Claude Code shows ❯ (or > as fallback) when its TUI is ready for input
-    if (/[❯>]\s*$/.test(output.trim())) return true;
+
+    // Bail early if OAuth/login screen is showing — TUI won't become ready
+    if (/sign in|oauth|Paste code here/i.test(output)) return false;
+
+    // Claude Code shows ❯ when idle. Check the last non-empty line specifically
+    // (not the end of the full output) to avoid matching "prompted >" etc.
+    const lastLine = output
+      .split("\n")
+      .filter((l) => l.trim().length > 0)
+      .pop();
+    if (lastLine && /^\s*❯\s*$/.test(lastLine)) return true;
+
     await sleep(2_000);
   }
   return false;
@@ -86,8 +84,9 @@ const tmuxOk = await isTmuxAvailable();
 const claudeBin = await findClaudeBinary();
 const hasApiKey = Boolean(process.env.ANTHROPIC_API_KEY);
 const canRun = tmuxOk && claudeBin !== null && hasApiKey;
-// Interactive mode requires a full login (ANTHROPIC_API_KEY alone only works with -p)
-const canRunInteractive = canRun && (await hasInteractiveAuth());
+// Interactive mode requires OAuth login. ANTHROPIC_API_KEY alone only works with -p.
+// CI environments (GitHub Actions) typically only have API keys, not OAuth sessions.
+const canRunInteractive = canRun && !process.env.CI;
 
 // ---------------------------------------------------------------------------
 // Test 1: -p flag causes Claude to exit (the bug)
@@ -209,8 +208,12 @@ describe.skipIf(!canRunInteractive)(
       const deadline = Date.now() + 90_000;
       while (Date.now() < deadline) {
         const output = await capturePane(sessionName, CAPTURE_LINES);
-        // Check that Claude responded (sentinel in output) AND is back at idle prompt
-        if (output.includes("SENTINEL_I_DELIVERED") && /[❯>]\s*$/.test(output.trim())) {
+        // Check that Claude responded (sentinel in output) AND is back at idle prompt (❯)
+        const lastLine = output
+          .split("\n")
+          .filter((l) => l.trim().length > 0)
+          .pop();
+        if (output.includes("SENTINEL_I_DELIVERED") && lastLine && /^\s*❯\s*$/.test(lastLine)) {
           break;
         }
         await sleep(2_000);
