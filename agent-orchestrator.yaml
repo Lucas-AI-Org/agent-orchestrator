@@ -1,28 +1,53 @@
-# Agent Orchestrator — self-hosting config (dog-fooding)
-
-dataDir: ~/.ao-sessions
-worktreeDir: ~/.worktrees/ao
+# Agent Orchestrator — Lucas AI trial config
+port: 3100
 
 defaults:
   runtime: tmux
   agent: claude-code
   workspace: worktree
-  notifiers: [desktop]
+  notifiers: [desktop, webhook]
 
 projects:
-  ao:
-    name: Agent Orchestrator
-    repo: ComposioHQ/agent-orchestrator
-    path: ~/agent-orchestrator
+  lucas-ai:
+    name: Lucas AI
+    repo: Lucas-AI-Org/lucas-ai
+    path: ~/Documents/GitHub/lucas-ai
     defaultBranch: main
-    sessionPrefix: ao
+    sessionPrefix: la
     scm:
       plugin: github
-    tracker:
-      plugin: linear
-      teamId: "2a6e9b1b-19cd-4e30-b5bd-7b34dc491c7e"
-    symlinks: [.claude]
+    symlinks:
+      - apps/server/.env
+      - apps/marketing/.env
+      - apps/admin/.env
+      - packages/db/.env
+      - .claude
     postCreate:
-      - "pnpm install"
-    agentConfig:
-      permissions: skip
+      - "bun install"
+
+# Notification channels
+notifiers:
+  webhook:
+    plugin: webhook
+    url: http://localhost:3100/api/events
+    retries: 2
+    retryDelayMs: 1000
+
+# Reactions — auto-responses to CI/review events
+reactions:
+  ci-failed:
+    auto: true
+    action: send-to-agent
+    retries: 2
+  changes-requested:
+    auto: true
+    action: send-to-agent
+    escalateAfter: 30m
+  approved-and-green:
+    auto: false
+    action: notify
+    priority: action
+  agent-stuck:
+    threshold: 10m
+    action: notify
+    priority: urgent
